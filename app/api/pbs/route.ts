@@ -315,6 +315,5 @@ Rules for your answer:
 
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-  console.log("Loaded pairings:", pairingsArray.length);
 
 }
