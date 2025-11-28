@@ -1,0 +1,200 @@
+{
+  "meta": {
+    "carrier": "American Airlines",
+    "product": "PBS",
+    "version": "1.0",
+    "updated_at": "2025-11-28",
+    "notes": "Simplified machine-readable rules for AA PBS. This JSON is guidance for the AI, not an exact legal reference. When in doubt, follow AA PBS official documentation."
+  },
+
+  "bid_structure": {
+    "layers": {
+      "min_layer": 1,
+      "max_layer": 10,
+      "typical_line_layers": [1, 2, 3, 4, 5, 6, 7],
+      "typical_reserve_only_layers": [8, 9, 10],
+      "description": "Up to 10 layers. Layers 1–7 typically used for line bidding, but any layer can be a reserve layer. Layers 8–10 are commonly reserved for reserve-only strategies. Higher-numbered layers are progressively more flexible / less restrictive than earlier ones."
+    },
+    "priority_rules": [
+      "Layer 1 is the most preferred (highest priority). Layer 10 is the last-chance (lowest priority).",
+      "Within a layer, MUST requests are hard constraints that the system will skip the layer rather than violate, if possible. PREFER requests are soft constraints that improve the quality of the award but can be overridden when necessary.",
+      "When designing layers, the AI should think in terms of a peel-off strategy: Layer 1 is the most restrictive; each subsequent layer relaxes some combination of off-days, pairing requirements, or reserve constraints."
+    ]
+  },
+
+  "calendar_and_days_off": {
+    "bid_period_vs_calendar_month": {
+      "description": "A PBS bid period is a 30- or 31-day block, which may not align exactly with the calendar month. Use the dates from the pairings JSON and user input to infer which days are in the active bid period.",
+      "day_off_entitlement": {
+        "reserve_30_day_bid_period": 12,
+        "reserve_31_day_bid_period": 13,
+        "notes": "These values are for RESERVE bidding and represent how many OFF days the system effectively provides. Lineholder legalities may differ, but for reserve logic the AI should assume 12 OFF days for a 30-day bid period and 13 OFF days for a 31-day bid period."
+      }
+    },
+    "off_request_types": {
+      "must_off": {
+        "description": "Hard constraint OFF. If the system cannot honor these in a given layer, it may skip that layer and move to the next.",
+        "usage": "Use for absolutely critical days (weddings, medical appointments, exams, immovable family events, etc.). MUST OFF days should be limited by the reserve days-off entitlement."
+      },
+      "prefer_off": {
+        "description": "Soft preference OFF. Awarded if possible without breaking higher-priority constraints.",
+        "usage": "Use for desirable but negotiable OFF days (preferred weekends, holidays that would be nice to have off, etc.). The system can accept many PREFER OFF days, even beyond the 12/13 entitlement; they simply may not all be granted."
+      }
+    }
+  },
+
+  "lineholder_bidding": {
+    "description": "High-level guidance for line (pairing-based) PBS bidding.",
+    "principles": [
+      "Line bidding focuses on selecting and ranking trip pairings and line properties, while still respecting days off and legalities.",
+      "Layers 1–7 are commonly used for lineholder strategies, but any layer can be used for lineholder or reserve bidding depending on user preference.",
+      "When the user prefers lineholder, earlier layers should emphasize specific preferred pairings or pairing characteristics (layover cities, trip lengths, commutable trips, etc.).",
+      "Avoid constructing line layers that are so restrictive that the user risks not holding a line at their seniority when they want one. Soften constraints in later layers."
+    ],
+    "pairing_selection_rules": [
+      "Use the pairings JSON as the single source of truth for trip numbers, dates, duty periods, layovers, and block lengths.",
+      "When the user describes preferred layover cities (e.g., MIA), trip lengths (e.g., mostly 2-days), or time-of-day (e.g., avoid redeyes), filter and prioritize matching pairings from the JSON.",
+      "For each layer, explicitly specify pairings by tripNumber and start date when possible, especially for the most desired trips.",
+      "If the user cares more about patterns (e.g., weekends off, consistent start times) than specific trip numbers, emphasize line properties instead of overly specific pairing IDs."
+    ]
+  },
+
+  "reserve": {
+    "description": "High-level guidance for reserve vs lineholder decision-making.",
+    "status_preferences": {
+      "lineholder_only": {
+        "description": "User wants a line if at all possible; reserve layers only as last-resort backup.",
+        "rules": [
+          "Layers 1–7 should be line-focused (pairings and line properties).",
+          "Reserve layers should be placed later (e.g., 8–10) and use flexible reserve strategies.",
+          "Never make Layer 1 a reserve layer when the user selects lineholder_only."
+        ]
+      },
+      "reserve_only": {
+        "description": "User wants reserve in this bid period if possible.",
+        "rules": [
+          "Reserve-oriented layers should appear early (Layer 1 and/or 2) and be clearly marked as reserve in the AI output.",
+          "Lineholder-oriented layers, if present at all, should be placed after the primary reserve layers and be flexible.",
+          "Lineholder backup layers should avoid extremely restrictive day-off patterns to reduce the risk of no award."
+        ]
+      },
+      "lineholder_preferred": {
+        "description": "User prefers lineholder but is willing to accept reserve as a fallback.",
+        "rules": [
+          "Layers 1–4 (for example) should prioritize lineholder strategies.",
+          "Include at least one or two reserve-only layers later (e.g., 8–10) as a backup strategy, designed according to the reserve_bidding rules.",
+          "Reserve layers used as backup should be flexible and not overly restrictive on days off."
+        ]
+      },
+      "reserve_preferred": {
+        "description": "User prefers reserve but wants lineholder as a backup if reserve is not likely.",
+        "rules": [
+          "Early layers (1–3) should be reserve-focused and follow the reserve_bidding peel-off strategy.",
+          "Later layers may contain flexible lineholder bids focused on protecting key days off rather than specific pairings.",
+          "Make sure both reserve and line layers stay realistic for the user’s seniority."
+        ]
+      }
+    }
+  },
+
+  "reserve_bidding": {
+    "description": "Detailed strategy for AA PBS reserve bidding, focusing on using the full days-off entitlement (12 days in a 30-day bid period, 13 days in a 31-day bid period) and peeling off constraints layer-by-layer.",
+    "monthly_days_off_limits": {
+      "30_day_bid_period": 12,
+      "31_day_bid_period": 13
+    },
+    "general_rules": [
+      "For reserve, assume the system effectively grants 12 days off in a 30-day bid period and 13 days off in a 31-day bid period. Treat these as the maximum number of OFF days the system will successfully award.",
+      "In any single layer, the number of MUST OFF days must NOT exceed the monthly days-off limit (12 or 13 depending on the bid period length).",
+      "The total number of OFF requests (MUST + PREFER) can exceed 12/13, but the system will only be able to award up to the entitlement; remaining OFF requests may not be satisfied.",
+      "PREFER OFF days are unlimited and can be placed on any number of dates, but they should be prioritized according to the pilot’s narrative (e.g., weekends/holidays first).",
+      "Reserve layers should be constructed using a peel-off strategy: Layer 1 is most restrictive (all OFF requests fully expressed), and each subsequent layer gradually relaxes MUST OFF constraints while preserving the user’s highest priorities."
+    ],
+    "layer_strategy": [
+      {
+        "layer_range": [1],
+        "name": "Reserve – Fully loaded priorities (most restrictive)",
+        "rules": [
+          "Layer 1 should attempt to fully use the monthly days-off entitlement: 12 OFF days in a 30-day bid period or 13 OFF days in a 31-day bid period.",
+          "Take all dates the user explicitly labels as MUST HAVE OFF (hard requirements) and assign them as MUST OFF in Layer 1, up to the 12/13 limit.",
+          "If the user has fewer MUST OFF dates than the 12/13 quota, fill the remaining OFF 'slots' with the highest-priority WANT days as PREFER OFF (examples: Saturdays/Sundays, holidays, special events).",
+          "If the user’s MUST OFF list exceeds the 12/13 quota, select the most critical ones (explicitly emphasized or clearly non-negotiable) as MUST OFF up to the limit and convert the remaining requested days to PREFER OFF.",
+          "Result: Layer 1 always tries to express the user’s full reserve day-off wish list while staying within the MUST OFF legal limit. It uses a mix of MUST and PREFER to fully cover the 12/13 OFF opportunities."
+        ]
+      },
+      {
+        "layer_range": [2],
+        "name": "Reserve – Peel-off 1 (slightly less restrictive)",
+        "rules": [
+          "Start from the OFF pattern in Layer 1.",
+          "Identify the least critical MUST OFF days from Layer 1 (for example, softer weekend preferences or days without explicit 'must' language). Convert a few of these days from MUST OFF to PREFER OFF.",
+          "Keep all unequivocally critical days (weddings, surgery, exams, immovable appointments) as MUST OFF in Layer 2.",
+          "Keep the total number of OFF requests (MUST + PREFER) at approximately the 12/13 level, but gradually reduce the number of MUST OFF days.",
+          "Result: Layer 2 remains very protective of key days but allows more flexibility for marginal days, giving PBS more ways to award a legal schedule while still respecting priorities."
+        ]
+      },
+      {
+        "layer_range": [3],
+        "name": "Reserve – Peel-off 2 (moderately less restrictive)",
+        "rules": [
+          "Begin from the pattern in Layer 2.",
+          "Further reduce the number of MUST OFF days by converting additional softer MUST OFF dates into PREFER OFF.",
+          "Prioritize keeping MUST OFF on only the highest-value days (e.g., single critical event dates) and convert more of the recurring preferences (like all Saturdays) to PREFER OFF if necessary.",
+          "Continue to keep OFF requests roughly at the 12/13 entitlement level, but with a higher ratio of PREFER OFF vs MUST OFF.",
+          "Result: Layer 3 should still reflect the user’s overall OFF pattern but with significantly more flexibility than Layer 1."
+        ]
+      },
+      {
+        "layer_range": [4, 5, 6, 7],
+        "name": "Reserve – Progressive peel-off (middle layers)",
+        "rules": [
+          "Layers 4–7 should successively relax constraints compared to the previous layer.",
+          "In each successive layer, downgrade the least critical remaining MUST OFF days to PREFER OFF until only a small core of absolutely non-negotiable days remain as MUST OFF, if any.",
+          "By Layers 6 and 7, most OFF requests should be PREFER OFF, and MUST OFF should be reserved for only a tiny number of truly critical dates (if they still exist).",
+          "Use these layers to express patterns such as 'Sundays MUST OFF, Saturdays PREFER OFF' in higher layers, which then slowly relax to 'Sundays PREFER OFF, Saturdays PREFER OFF' while still hinting the desired pattern.",
+          "Always respect the rule that in each layer, MUST OFF days cannot exceed the 12/13 entitlement, but PREFER OFF days can still be listed on additional dates."
+        ]
+      },
+      {
+        "layer_range": [8, 9],
+        "name": "Reserve-only layers (flexible reserve focus)",
+        "rules": [
+          "Layers 8 and 9 are commonly used for reserve-only bids, especially when the pilot wants strong reserve preference but is willing to be flexible.",
+          "At these layers, generally keep only the most critical days (if any) as MUST OFF; most OFF requests should be PREFER OFF.",
+          "Treat these layers as 'I really want reserve with these day-off patterns, but I accept considerable flexibility if required' strategies.",
+          "If the user has a strong preference for certain patterns (e.g., most weekends off), encode them primarily as PREFER OFF in these layers, not MUST OFF."
+        ]
+      },
+      {
+        "layer_range": [10],
+        "name": "Reserve – Last-chance layer (very flexible)",
+        "rules": [
+          "Layer 10 should act as a safety-net reserve layer.",
+          "Avoid using MUST OFF here unless absolutely necessary for one or two extremely critical dates. In many typical scenarios, Layer 10 should contain only PREFER OFF days.",
+          "This layer communicates: 'If no other layers work, I’m willing to be very flexible on day-off patterns, but please favor these days where possible.'",
+          "Keeping Layer 10 mostly PREFER OFF helps prevent complete bid failure due to overly restrictive MUST OFF constraints and ensures the pilot is likely to receive some award consistent with their general preferences."
+        ]
+      }
+    ],
+    "reserve_line_preferences": {
+      "values": ["S", "L", "S-L", "L-S"],
+      "description": "Reserve Line Preference in PBS. 'S' = Short call, 'L' = Long call, 'S-L' = short-call priority then long-call, 'L-S' = long-call priority then short-call. The AI should set this per reserve layer based on user narrative.",
+      "usage_guidance": [
+        "When the user expresses a strong preference for shorter-notice reserve, choose 'S' or 'S-L'.",
+        "When the user expresses a preference for more predictable / longer-notice reserve, choose 'L' or 'L-S'.",
+        "Reserve Line Preference can vary by layer; earlier layers can enforce stronger preferences (e.g., 'S-L'), while later layers may relax toward more flexible options (e.g., 'S' or 'L-S')."
+      ]
+    }
+  },
+
+  "layering_best_practices": {
+    "description": "Guidelines for how the AI should structure layers in general (lineholder and reserve).",
+    "rules": [
+      "Never create a Layer 1 that is obviously impossible or wildly over-constrained at the pilot’s approximate seniority. If the user’s wishes are unrealistic, you must still encode them but should document the risk in the notes field.",
+      "For lineholder-focused bids, earlier layers should emphasize specific trips and strong off-day patterns, while later layers gradually relax pairings and off-day constraints.",
+      "For reserve-focused bids, use the reserve_bidding peel-off algorithm to fully consume the days-off entitlement in Layer 1 and relax MUST OFF days in subsequent layers.",
+      "Layers 8–10 are natural places for 'catch-all' flexible strategies (reserve-only or very soft lineholder bids) that help avoid total bid failure.",
+      "Always explain, in the summary or notes, how the layers are structured and why certain days are MUST OFF vs PREFER OFF, so the pilot can understand the strategy."
+    ]
+  }
+}
