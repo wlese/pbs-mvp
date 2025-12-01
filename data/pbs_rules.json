@@ -13,7 +13,21 @@
       "max_layer": 10,
       "typical_line_layers": [1, 2, 3, 4, 5, 6, 7],
       "typical_reserve_only_layers": [8, 9, 10],
-      "description": "Up to 10 layers. Layers 1–7 typically used for line bidding, but any layer can be a reserve layer. Layers 8–10 are commonly reserved for reserve-only strategies. Higher-numbered layers are progressively more flexible / less restrictive than earlier ones."
+      "description": "Up to 10 layers. Layers 1–7 typically used for line bidding, but any layer can be a reserve layer. Layers 8–10 are commonly reserved for reserve-only strategies. Higher-numbered layers are progressively more flexible / less restrictive than earlier ones.",
+      "layer_roles": {
+        "early_layers": {
+          "range": [1, 2, 3],
+          "usage": "Place the pilot's strictest and most preferred outcomes here. For line bids, anchor must-have pairings and critical days off. For reserve bids, fully consume the monthly day-off entitlement with MUST where appropriate."
+        },
+        "middle_layers": {
+          "range": [4, 5, 6, 7],
+          "usage": "Peel off constraints gradually. Keep the core pattern (e.g., weekends off) but relax MUST counts, widen acceptable pairing types, and introduce reserve backups if the status preference allows."
+        },
+        "late_layers": {
+          "range": [8, 9, 10],
+          "usage": "Catch-all safety nets. Favor flexible reserve layers or very soft lineholder bids that preserve only the highest-value dates. Avoid over-constraining these layers to prevent bid failure."
+        }
+      }
     },
     "priority_rules": [
       "Layer 1 is the most preferred (highest priority). Layer 10 is the last-chance (lowest priority).",
@@ -55,7 +69,43 @@
       "Use the pairings JSON as the single source of truth for trip numbers, dates, duty periods, layovers, and block lengths.",
       "When the user describes preferred layover cities (e.g., MIA), trip lengths (e.g., mostly 2-days), or time-of-day (e.g., avoid redeyes), filter and prioritize matching pairings from the JSON.",
       "For each layer, explicitly specify pairings by tripNumber and start date when possible, especially for the most desired trips.",
-      "If the user cares more about patterns (e.g., weekends off, consistent start times) than specific trip numbers, emphasize line properties instead of overly specific pairing IDs."
+      "If the user cares more about patterns (e.g., weekends off, consistent start times) than specific trip numbers, emphasize line properties instead of overly specific pairing IDs.",
+      "When two trips are comparable, choose the one that best satisfies commute feasibility (first duty sign-in after 08:00 local when commuting, or hotel night before) and fatigue mitigation (avoid back-to-back redeyes unless explicitly requested)."
+    ],
+    "pairing_quality": {
+      "description": "Scoring-style guidance for selecting ideal trips when multiple options fit the narrative.",
+      "attributes": [
+        {
+          "name": "commutable_start",
+          "signal": "Prefer sign-ins 08:00–11:00 local when user hints at commuting; avoid pre-dawn report unless explicitly requested."
+        },
+        {
+          "name": "productive_block",
+          "signal": "Favor trips with higher block per duty period when user wants efficiency; deprioritize low-block, high-TAFB patterns unless they unlock key days off."
+        },
+        {
+          "name": "preferred_layover",
+          "signal": "Boost trips with layovers in cities the user names (e.g., MIA, DFW) and downgrade ones in cities the user dislikes."
+        },
+        {
+          "name": "redeye_avoidance",
+          "signal": "If user avoids redeyes, push redeye pairings to later layers or omit them entirely; if user welcomes them, place them in earlier layers to maximize award probability."
+        },
+        {
+          "name": "consistent_starts",
+          "signal": "For schedule stability requests, cluster trips with similar report times within a layer instead of mixing early and late shows."
+        }
+      ]
+    }
+  },
+
+  "legalities_and_fatigue": {
+    "description": "Practical reminders to avoid suggesting bids that would obviously fail legality checks or create undue fatigue risk.",
+    "rules": [
+      "Keep cumulative TAFB reasonable across preferred pairings; if user wants shorter trips, bias toward 1–2 day pairings rather than 4-day sequences unless the narrative prioritizes long trips for commutability.",
+      "Avoid stacking pairings with minimum legal rest back-to-back unless user explicitly says they accept aggressive patterns. Use later layers for aggressive combinations if needed.",
+      "When suggesting double-ups, ensure duty days remain legal per the pairings JSON details and call out the intent in notes.",
+      "If the user mentions specific FAR 117 or contract constraints, respect them in layer design even if they are not explicitly encoded in the pairing data."
     ]
   },
 
