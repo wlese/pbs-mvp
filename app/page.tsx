@@ -451,6 +451,7 @@ ${idealSchedule || "None specified"}
       ? createPortal(
           <div
             role="alertdialog"
+            aria-modal="true"
             aria-live="assertive"
             aria-busy="true"
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
