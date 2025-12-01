@@ -422,8 +422,30 @@ ${idealSchedule || "None specified"}
   const fallbackReserve = result?.reserveProperties?.[0] ?? null;
   const reserveForPanel = activeReserve || fallbackReserve;
 
+  const overlayVisible = loading || progress > 0;
+
   return (
     <main className="min-h-screen bg-[#f2f2f2] text-slate-900 flex justify-center p-4">
+      {overlayVisible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-[#c7dff8] p-6 w-[340px] text-center space-y-3">
+            <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.2em]">
+              Generating PBS Bid...
+            </div>
+            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#4a90e2] transition-all duration-300"
+                style={{ width: `${Math.max(progress, 8)}%` }}
+              />
+            </div>
+            <div className="text-[13px] text-[#4a4a4a]">
+              Please wait while we build a single bid type per layer (lineholder
+              pairings or reserve request).
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-6xl bg-[#f7f7f7] rounded-3xl shadow-lg border border-slate-300 overflow-hidden">
         {/* Top PBS-style tab bar */}
         <div className="flex items-center bg-[#d0d0d0] text-[15px] font-semibold">
@@ -525,7 +547,11 @@ ${idealSchedule || "None specified"}
                     <span className="ml-2 text-[11px] uppercase text-[#b2f5ea]">
                       Reserve Layer
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="ml-2 text-[11px] uppercase text-[#d2e6ff]">
+                      Lineholder Layer
+                    </span>
+                  )}
                 </div>
                 {result?.summary && (
                   <span className="text-[10px] text-[#ccc] max-w-[60%] text-right line-clamp-2">
@@ -560,9 +586,11 @@ ${idealSchedule || "None specified"}
 
                   // Pull all pairings whose span includes this iso, then filter by layer
                   const allDayPairings = pairingDayMap.get(iso) ?? [];
-                  const pairings = allDayPairings.filter((p) =>
-                    p.layers?.includes(currentLayer)
-                  );
+                  const pairings = isReserveLayer
+                    ? []
+                    : allDayPairings.filter((p) =>
+                        p.layers?.includes(currentLayer)
+                      );
 
                   const hasMust = offReqs.some((o) => o.strength === "must");
                   const hasPrefer = offReqs.some(
@@ -1064,6 +1092,12 @@ ${idealSchedule || "None specified"}
                           </button>
                         </div>
 
+                        <div className="bg-white border border-[#d4e4ff] text-[#2f3f54] rounded-md px-3 py-2 mb-2">
+                          Reserve layers cannot include specific pairings. For
+                          a given layer, bid either reserve with OFF-day
+                          preferences or lineholder pairings—not both.
+                        </div>
+
                         {reserveForPanel && (
                           <div className="space-y-2">
                             {/* Avoid Lineholder */}
@@ -1237,6 +1271,12 @@ ${idealSchedule || "None specified"}
                     LAYER 1–10. This panel mirrors how your AI plan is
                     structured by layer (line vs reserve, OFF dates, and
                     specific pairings).
+                  </p>
+                  <p className="text-[#444] bg-[#eef2ff] border border-[#d5defe] rounded-md px-3 py-2">
+                    Each layer is either a <strong>lineholder bid</strong>
+                    (specific pairings and layer-specific OFF days) or a
+                    <strong> reserve bid</strong> (reserve request plus OFF day
+                    preferences). A single layer cannot mix both.
                   </p>
                   <p className="text-[#777]">
                     Current layer: <strong>{currentLayer}</strong>{" "}
