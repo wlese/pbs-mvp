@@ -369,27 +369,49 @@ export default function Home() {
     setError(null);
     setResult(null);
 
-    if (!idealSchedule.trim()) {
-      setLoading(false);
-      setError("Please describe your ideal schedule.");
-      return;
+  useEffect(() => {
+    if (!mounted) return;
+
+    const originalOverflow = document.body.style.overflow;
+
+    if (overlayVisible) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = originalOverflow;
     }
 
-    const combinedPreferences = `
-DOMICILE: ${domicile}
-SEAT: ${seat}
-EQUIPMENT: ${equipment}
-APPROX BIDDING SENIORITY: ${seniority}%
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [overlayVisible, mounted]);
 
-DAYS YOU MUST HAVE OFF:
-${mustOffDays || "None specified"}
+    async function handleSubmit(e: React.FormEvent) {
+      e.preventDefault();
+      setLoading(true);
+      setError(null);
+      setResult(null);
 
-DAYS YOU WANT OFF:
-${wantOffDays || "None specified"}
+      if (!idealSchedule.trim()) {
+        setLoading(false);
+        setError("Please describe your ideal schedule.");
+        return;
+      }
 
-IDEAL SCHEDULE:
-${idealSchedule || "None specified"}
-`.trim();
+      const combinedPreferences = [
+        `DOMICILE: ${domicile}`,
+        `SEAT: ${seat}`,
+        `EQUIPMENT: ${equipment}`,
+        `APPROX BIDDING SENIORITY: ${seniority}%`,
+        "",
+        "DAYS YOU MUST HAVE OFF:",
+        mustOffDays || "None specified",
+        "",
+        "DAYS YOU WANT OFF:",
+        wantOffDays || "None specified",
+        "",
+        "IDEAL SCHEDULE:",
+        idealSchedule || "None specified",
+      ].join("\n");
 
     try {
       const res = await fetch("/api/pbs", {
