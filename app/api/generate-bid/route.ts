@@ -1,17 +1,9 @@
 // app/api/pbs/route.ts
 import { NextResponse } from "next/server";
-import { openai } from "@/lib/openai";
+import { getOpenAIClient } from "@/lib/openai";
 
 import pbsRules from "@/data/pbs_rules.json";
 import rawPairings from "@/data/pairings.json";
-
-function ensureApiKey() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error(
-      "OPENAI_API_KEY is missing. Make sure it is set in your .env.local file."
-    );
-  }
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -87,7 +79,7 @@ function describeStatusPreference(code: string) {
 
 export async function POST(req: Request) {
   try {
-    ensureApiKey();
+    const openai = getOpenAIClient();
 
     if (!ALL_PAIRINGS.length) {
       return NextResponse.json(
