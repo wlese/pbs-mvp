@@ -319,11 +319,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [mounted, setMounted] = useState(false);
-  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
-    setPortalRoot(document.body);
   }, []);
 
   useEffect(() => {
@@ -348,6 +346,28 @@ export default function Home() {
   }, [loading, progress]);
 
   const overlayVisible = loading || progress > 0;
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const originalOverflow = document.body.style.overflow;
+
+    if (overlayVisible) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = originalOverflow;
+    }
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [overlayVisible, mounted]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setResult(null);
 
   useEffect(() => {
     if (!mounted) return;
@@ -449,7 +469,7 @@ export default function Home() {
   const reserveForPanel = activeReserve || fallbackReserve;
 
   const overlay =
-    mounted && portalRoot && overlayVisible
+    mounted && overlayVisible
       ? createPortal(
           <div
             role="alertdialog"
@@ -475,16 +495,33 @@ export default function Home() {
               </div>
             </div>
           </div>,
-          portalRoot
+          document.body
         )
       : null;
 
   return (
-    <>
-      {overlay}
+    <main className="min-h-screen bg-[#f2f2f2] text-slate-900 flex justify-center p-4">
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-[#c7dff8] p-6 w-[340px] text-center space-y-3">
+            <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.2em]">
+              Generating PBS Bid...
+            </div>
+            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#4a90e2] transition-all duration-300"
+                style={{ width: `${Math.max(progress, 8)}%` }}
+              />
+            </div>
+            <div className="text-[13px] text-[#4a4a4a]">
+              Please wait while we build a single bid type per layer (lineholder
+              pairings or reserve request).
+            </div>
+          </div>
+        </div>
+      )}
 
-      <main className="min-h-screen bg-[#f2f2f2] text-slate-900 flex justify-center p-4">
-        <div className="w-full max-w-6xl bg-[#f7f7f7] rounded-3xl shadow-lg border border-slate-300 overflow-hidden">
+      <div className="w-full max-w-6xl bg-[#f7f7f7] rounded-3xl shadow-lg border border-slate-300 overflow-hidden">
         {/* Top PBS-style tab bar */}
         <div className="flex items-center bg-[#d0d0d0] text-[15px] font-semibold">
           {TABS.map((tab) => {
