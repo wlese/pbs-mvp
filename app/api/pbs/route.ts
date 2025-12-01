@@ -17,19 +17,24 @@ function ensureApiKey() {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /**
  * Recursively search for the first non-empty array of objects inside any JSON structure.
  */
-function findFirstObjectArray(value: any): any[] {
+function findFirstObjectArray(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) {
-    if (value.length > 0 && typeof value[0] === "object") {
-      return value;
+    const objectValues = value.filter(isRecord);
+    if (objectValues.length > 0) {
+      return objectValues;
     }
   }
 
-  if (value && typeof value === "object") {
+  if (isRecord(value)) {
     for (const key of Object.keys(value)) {
-      const child = (value as any)[key];
+      const child = value[key];
       const found = findFirstObjectArray(child);
       if (Array.isArray(found) && found.length > 0) {
         return found;
@@ -43,13 +48,13 @@ function findFirstObjectArray(value: any): any[] {
 /**
  * Normalize whatever is in pairings.json into a plain array of trip objects.
  */
-function getAllPairings(): any[] {
-  const data: any = rawPairings as any;
+function getAllPairings(): Record<string, unknown>[] {
+  const data: unknown = rawPairings;
   const arr = findFirstObjectArray(data);
   return Array.isArray(arr) ? arr : [];
 }
 
-const ALL_PAIRINGS: any[] = getAllPairings();
+const ALL_PAIRINGS: Record<string, unknown>[] = getAllPairings();
 
 /**
  * VERY SIMPLE "FILTER":
@@ -115,13 +120,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
-    const preferences = body?.preferences;
-    const statusPreferenceCode = body?.statusPreference || "lineholder_preferred";
+    const body = (await req.json()) as Record<string, unknown>;
+    const preferences = body["preferences"];
+    const statusPreferenceCode =
+      (typeof body["statusPreference"] === "string"
+        ? body["statusPreference"]
+        : null) || "lineholder_preferred";
     const { label: statusLabel, guidance: statusGuidance } =
       describeStatusPreference(statusPreferenceCode);
 
-    if (!preferences || typeof preferences !== "string") {
+    if (typeof preferences !== "string" || !preferences) {
       return NextResponse.json(
         { error: "Missing 'preferences' text in request body." },
         { status: 400 }
@@ -190,6 +198,11 @@ AA PBS INTERFACE ELEMENTS (you must speak this language):
    - "Waive Reserve Block of 4 Days Off" (boolean)
    - "Allow Single Reserve Day Off" (boolean)
    - "Waive First Day of Month DFP Requirement" (boolean)
+
+UPDATED DAYS OFF LOGIC:
+- For lineholder bidding, treat day off selections as hard "MUST OFF" constraints. Do NOT generate "prefer off" requests for lineholder layers.
+- For reserve bidding, you may use two strengths: "must off" (hard constraint) and "prefer off" (soft preference). These are the only day-off types you should use for reserve layers.
+- When deciding which dates to include for each layer, apply the above logic so that only reserve-focused layers receive any "prefer off" dates.
 
 You will receive:
 1) The pilot's free-text preferences and constraints.
@@ -295,7 +308,7 @@ Rules for your answer:
       },
     });
 
-    const text = (response as any).output_text ?? "{}";
+    const text = (response as { output_text?: string }).output_text ?? "{}";
 
     let jsonResult;
     try {
@@ -305,13 +318,27 @@ Rules for your answer:
     }
 
     return NextResponse.json(jsonResult);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("PBS API error:", err);
 
-    const msg =
-      err?.response?.data?.error?.message ||
-      err?.message ||
-      "Server error calling OpenAI";
+    const msg = (() => {
+      if (typeof err === "string") return err;
+      if (isRecord(err)) {
+        const responseData = err["response"];
+        if (
+          isRecord(responseData) &&
+          isRecord(responseData["data"]) &&
+          isRecord(responseData["data"]["error"])
+        ) {
+          const nestedMessage = responseData["data"]["error"]["message"];
+          if (typeof nestedMessage === "string") return nestedMessage;
+        }
+
+        const message = err["message"];
+        if (typeof message === "string") return message;
+      }
+      return "Server error calling OpenAI";
+    })();
 
     return NextResponse.json({ error: msg }, { status: 500 });
   }

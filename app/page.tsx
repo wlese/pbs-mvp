@@ -1,7 +1,7 @@
 // app/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import pairingsData from "@/data/pairings.json";
 
 // ---------- Types ----------
@@ -122,41 +122,45 @@ const MONTHS = [
 
 // ---------- Helpers for pairings.json ----------
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /**
  * Build a map from tripNumber → list of dates (YYYY-MM-DD) that trip covers.
  * This tries to be forgiving about how the JSON is structured.
  */
-function buildPairingSpanMap(raw: any): Map<string, string[]> {
+function buildPairingSpanMap(raw: unknown): Map<string, string[]> {
   try {
-    const arr: any[] = Array.isArray(raw)
+    const arr: unknown[] = Array.isArray(raw)
       ? raw
-      : Array.isArray(raw?.pairings)
+      : isRecord(raw) && Array.isArray(raw.pairings)
       ? raw.pairings
-      : Array.isArray(raw?.trips)
+      : isRecord(raw) && Array.isArray(raw.trips)
       ? raw.trips
       : [];
 
     const map = new Map<string, string[]>();
 
     for (const t of arr) {
-      if (!t || typeof t !== "object") continue;
-      const obj = t as any;
+      if (!isRecord(t)) continue;
+      const obj = t;
 
       const idCandidate =
-        obj.tripNumber ??
-        obj.TripNumber ??
-        obj.TRIP_NUMBER ??
-        obj.pairingNumber ??
-        obj.PairingNumber ??
-        obj.PAIRING_NUMBER ??
-        obj.pairingId ??
-        obj.PairingID ??
-        obj.id ??
-        obj.ID ??
-        obj.trip ??
-        obj.Trip ??
-        obj.pairing ??
-        obj.Pairing;
+        obj["tripNumber"] ??
+        obj["TripNumber"] ??
+        obj["TRIP_NUMBER"] ??
+        obj["pairingNumber"] ??
+        obj["PairingNumber"] ??
+        obj["PAIRING_NUMBER"] ??
+        obj["pairingId"] ??
+        obj["PairingID"] ??
+        obj["id"] ??
+        obj["ID"] ??
+        obj["trip"] ??
+        obj["Trip"] ??
+        obj["pairing"] ??
+        obj["Pairing"];
 
       if (!idCandidate) continue;
       const tripId = String(idCandidate).trim();
@@ -165,29 +169,37 @@ function buildPairingSpanMap(raw: any): Map<string, string[]> {
       let dates: string[] = [];
 
       // 1) Explicit dates array
-      if (Array.isArray(obj.dates)) {
-        dates = obj.dates
-          .map((d: any) => (typeof d === "string" ? d : null))
-          .filter(Boolean) as string[];
+      if (Array.isArray(obj["dates"])) {
+        dates = (obj["dates"] as unknown[])
+          .map((d) => (typeof d === "string" ? d : null))
+          .filter((d): d is string => Boolean(d));
       }
 
       // 2) Duty periods with date / depDate
-      if (!dates.length && Array.isArray(obj.dutyPeriods)) {
-        for (const dp of obj.dutyPeriods) {
-          const d = (dp as any).date ?? (dp as any).depDate;
-          if (typeof d === "string") dates.push(d);
+      if (!dates.length && Array.isArray(obj["dutyPeriods"])) {
+        for (const dp of obj["dutyPeriods"] as unknown[]) {
+          if (!isRecord(dp)) continue;
+          const dutyDate = dp["date"];
+          const depDate = dp["depDate"];
+          const d =
+            typeof dutyDate === "string"
+              ? dutyDate
+              : typeof depDate === "string"
+              ? depDate
+              : null;
+          if (d) dates.push(d);
         }
       }
 
       // 3) Start date + length in days
-      if (!dates.length && typeof obj.startDate === "string") {
-        const start = obj.startDate as string;
+      if (!dates.length && typeof obj["startDate"] === "string") {
+        const start = obj["startDate"] as string;
         const lenRaw =
-          obj.lengthDays ??
-          obj.length ??
-          obj.tripLength ??
-          obj.DAYS ??
-          obj.BLK_DAYS ??
+          obj["lengthDays"] ??
+          obj["length"] ??
+          obj["tripLength"] ??
+          obj["DAYS"] ??
+          obj["BLK_DAYS"] ??
           1;
         const days = Number(lenRaw) || 1;
         const startDate = new Date(start);
@@ -201,8 +213,8 @@ function buildPairingSpanMap(raw: any): Map<string, string[]> {
       }
 
       // 4) Single date field
-      if (!dates.length && typeof obj.date === "string") {
-        dates = [obj.date];
+      if (!dates.length && typeof obj["date"] === "string") {
+        dates = [obj["date"] as string];
       }
 
       dates = Array.from(new Set(dates)); // dedupe
@@ -219,19 +231,13 @@ function buildPairingSpanMap(raw: any): Map<string, string[]> {
   }
 }
 
-const PAIRING_SPANS = buildPairingSpanMap(pairingsData as any);
+const PAIRING_SPANS = buildPairingSpanMap(pairingsData);
 
 // ---------- Other helpers ----------
 
 function layersToString(layers?: number[]) {
   if (!layers || !layers.length) return "—";
   return [...layers].sort((a, b) => a - b).join(", ");
-}
-
-function yesNo(value?: boolean) {
-  if (value === true) return "Yes";
-  if (value === false) return "No";
-  return "—";
 }
 
 function parseSafeDate(dateStr: string): Date | null {
@@ -310,6 +316,28 @@ export default function Home() {
   const [result, setResult] = useState<PbsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    if (loading) {
+      setProgress(5);
+      const interval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) return prev;
+          const next = prev + Math.random() * 12;
+          return next >= 95 ? 95 : next;
+        });
+      }, 300);
+
+      return () => clearInterval(interval);
+    }
+
+    if (!loading && progress > 0) {
+      setProgress(100);
+      const timeout = setTimeout(() => setProgress(0), 400);
+      return () => clearTimeout(timeout);
+    }
+  }, [loading, progress]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -355,8 +383,9 @@ ${idealSchedule || "None specified"}
       }
 
       setResult(data);
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -369,6 +398,10 @@ ${idealSchedule || "None specified"}
   // Calendar based on result
   const { year, month, label: monthLabel } = inferYearMonth(result);
   const calendarDays = buildCalendar(year, month);
+
+  const isReserveLayer = Boolean(
+    result?.reserveProperties?.some((r) => r.layer === currentLayer)
+  );
 
   // Build a map of date → pairingRequests (using real span from pairings.json)
   const pairingDayMap = new Map<string, PairingRequest[]>();
@@ -413,6 +446,27 @@ ${idealSchedule || "None specified"}
           })}
           <div className="flex-1 bg-[#d0d0d0]" />
         </div>
+
+        {(loading || progress > 0) && (
+          <div className="px-4 pt-3">
+            <div className="flex items-center gap-3 bg-white border border-slate-300 rounded-xl shadow-sm p-3">
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.14em]">
+                  Generating PBS Bid
+                </div>
+                <div className="h-2 mt-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#4a90e2] transition-all duration-200"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+              <div className="text-sm font-bold text-[#4a4a4a] w-14 text-right">
+                {Math.round(progress)}%
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main layout */}
         <div className="flex flex-col lg:flex-row gap-4 p-4">
@@ -495,10 +549,14 @@ ${idealSchedule || "None specified"}
                   const iso = dayKey(d.date);
 
                   const offReqs =
-                    result?.dayOffRequests?.filter(
-                      (r) =>
-                        r.date === iso && r.layers?.includes(currentLayer)
-                    ) ?? [];
+                    result?.dayOffRequests
+                      ?.filter(
+                        (r) =>
+                          r.date === iso && r.layers?.includes(currentLayer)
+                      )
+                      .filter((r) =>
+                        isReserveLayer ? true : r.strength === "must"
+                      ) ?? [];
 
                   // Pull all pairings whose span includes this iso, then filter by layer
                   const allDayPairings = pairingDayMap.get(iso) ?? [];
@@ -511,10 +569,14 @@ ${idealSchedule || "None specified"}
                     (o) => o.strength === "prefer"
                   );
 
-                  const offLabel = hasMust
-                    ? "OFF\nMust"
-                    : hasPrefer
-                    ? "OFF\nPrefer"
+                  const offLabel = isReserveLayer
+                    ? hasMust
+                      ? "OFF\nMust"
+                      : hasPrefer
+                      ? "OFF\nPrefer"
+                      : ""
+                    : hasMust
+                    ? "OFF"
                     : "";
 
                   const visibleTrips = pairings.slice(0, 2);
