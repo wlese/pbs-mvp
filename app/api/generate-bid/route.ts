@@ -13,16 +13,21 @@ function ensureApiKey() {
   }
 }
 
-function findFirstObjectArray(value: any): any[] {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function findFirstObjectArray(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) {
-    if (value.length > 0 && typeof value[0] === "object") {
-      return value;
+    const objectValues = value.filter(isRecord);
+    if (objectValues.length > 0) {
+      return objectValues;
     }
   }
 
-  if (value && typeof value === "object") {
+  if (isRecord(value)) {
     for (const key of Object.keys(value)) {
-      const child = (value as any)[key];
+      const child = value[key];
       const found = findFirstObjectArray(child);
       if (Array.isArray(found) && found.length > 0) {
         return found;
@@ -33,13 +38,13 @@ function findFirstObjectArray(value: any): any[] {
   return [];
 }
 
-function getAllPairings(): any[] {
-  const data: any = rawPairings as any;
+function getAllPairings(): Record<string, unknown>[] {
+  const data: unknown = rawPairings;
   const arr = findFirstObjectArray(data);
   return Array.isArray(arr) ? arr : [];
 }
 
-const ALL_PAIRINGS: any[] = getAllPairings();
+const ALL_PAIRINGS: Record<string, unknown>[] = getAllPairings();
 
 function getPairingsForThisRequest() {
   return ALL_PAIRINGS.slice(0, 100);
@@ -94,18 +99,26 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
+    const body = (await req.json()) as Record<string, unknown>;
 
-    const domicile = body?.domicile || "UNKNOWN";
-    const seat = body?.seat || "UNKNOWN";
-    const equipment = body?.equipment || "UNKNOWN";
-    const seniorityPercent = body?.seniorityPercent ?? null;
+    const domicile = typeof body["domicile"] === "string" ? body["domicile"] : "UNKNOWN";
+    const seat = typeof body["seat"] === "string" ? body["seat"] : "UNKNOWN";
+    const equipment =
+      typeof body["equipment"] === "string" ? body["equipment"] : "UNKNOWN";
+    const seniorityPercent =
+      typeof body["seniorityPercent"] === "number"
+        ? body["seniorityPercent"]
+        : null;
 
-    const mustOffDays = body?.mustOffDays || "";
-    const wantOffDays = body?.wantOffDays || "";
-    const idealSchedule = body?.idealSchedule;
+    const mustOffDays = typeof body["mustOffDays"] === "string" ? body["mustOffDays"] : "";
+    const wantOffDays = typeof body["wantOffDays"] === "string" ? body["wantOffDays"] : "";
+    const idealSchedule =
+      typeof body["idealSchedule"] === "string" ? body["idealSchedule"] : undefined;
 
-    const statusPreferenceCode = body?.statusPreference || "lineholder_preferred";
+    const statusPreferenceCode =
+      (typeof body["statusPreference"] === "string"
+        ? body["statusPreference"]
+        : null) || "lineholder_preferred";
     const { label: statusLabel, guidance: statusGuidance } =
       describeStatusPreference(statusPreferenceCode);
 
@@ -282,7 +295,7 @@ Rules for your answer:
       },
     });
 
-    const text = (response as any).output_text ?? "{}";
+    const text = (response as { output_text?: string }).output_text ?? "{}";
 
     let jsonResult;
     try {
@@ -292,13 +305,27 @@ Rules for your answer:
     }
 
     return NextResponse.json(jsonResult);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("PBS API error:", err);
 
-    const msg =
-      err?.response?.data?.error?.message ||
-      err?.message ||
-      "Server error calling OpenAI";
+    const msg = (() => {
+      if (typeof err === "string") return err;
+      if (isRecord(err)) {
+        const responseData = err["response"];
+        if (
+          isRecord(responseData) &&
+          isRecord(responseData["data"]) &&
+          isRecord(responseData["data"]["error"])
+        ) {
+          const nestedMessage = responseData["data"]["error"]["message"];
+          if (typeof nestedMessage === "string") return nestedMessage;
+        }
+
+        const message = err["message"];
+        if (typeof message === "string") return message;
+      }
+      return "Server error calling OpenAI";
+    })();
 
     return NextResponse.json({ error: msg }, { status: 500 });
   }
