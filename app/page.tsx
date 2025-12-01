@@ -449,8 +449,14 @@ ${idealSchedule || "None specified"}
   const overlay =
     mounted && overlayVisible
       ? createPortal(
-          <div className="fixed inset-0 w-screen h-screen z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl border border-[#c7dff8] p-6 w-[340px] text-center space-y-3">
+          <div
+            role="alertdialog"
+            aria-live="assertive"
+            aria-busy="true"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          >
+            <div className="absolute inset-0" aria-hidden="true" />
+            <div className="relative bg-white rounded-2xl shadow-2xl border border-[#c7dff8] p-6 w-[340px] text-center space-y-3">
               <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.2em]">
                 Generating PBS Bid...
               </div>
