@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import pairingsData from "@/data/pairings.json";
 
 // ---------- Types ----------
@@ -317,6 +318,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (loading) {
@@ -338,6 +344,24 @@ export default function Home() {
       return () => clearTimeout(timeout);
     }
   }, [loading, progress]);
+
+  const overlayVisible = loading || progress > 0;
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const originalOverflow = document.body.style.overflow;
+
+    if (overlayVisible) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = originalOverflow;
+    }
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [overlayVisible, mounted]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -421,6 +445,37 @@ ${idealSchedule || "None specified"}
     result?.reserveProperties?.find((r) => r.layer === currentLayer) ?? null;
   const fallbackReserve = result?.reserveProperties?.[0] ?? null;
   const reserveForPanel = activeReserve || fallbackReserve;
+
+  const overlay =
+    mounted && overlayVisible
+      ? createPortal(
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-live="assertive"
+            aria-busy="true"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          >
+            <div className="absolute inset-0" aria-hidden="true" />
+            <div className="relative bg-white rounded-2xl shadow-2xl border border-[#c7dff8] p-6 w-[340px] text-center space-y-3">
+              <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.2em]">
+                Generating PBS Bid...
+              </div>
+              <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#4a90e2] transition-all duration-300"
+                  style={{ width: `${Math.max(progress, 8)}%` }}
+                />
+              </div>
+              <div className="text-[13px] text-[#4a4a4a]">
+                Please wait while we build a single bid type per layer (lineholder
+                pairings or reserve request).
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
     <main className="min-h-screen bg-[#f2f2f2] text-slate-900 flex justify-center p-4">
@@ -1320,6 +1375,7 @@ ${idealSchedule || "None specified"}
           </div>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
