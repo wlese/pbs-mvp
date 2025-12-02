@@ -353,6 +353,9 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [viewMode, setViewMode] = useState<"user" | "admin">("user");
+  const [sequenceNumbers, setSequenceNumbers] = useState<string[]>([]);
+  const [sequencesLoading, setSequencesLoading] = useState(false);
+  const [sequencesError, setSequencesError] = useState<string | null>(null);
 
   const inferredYearMonth = inferYearMonth(result);
   const [adminYear, setAdminYear] = useState<number>(inferredYearMonth.year);
@@ -511,6 +514,51 @@ export default function Home() {
 
   function handleCopy(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
+  }
+
+  async function handleLoadSequences() {
+    setSequencesLoading(true);
+    setSequencesError(null);
+
+    try {
+      const res = await fetch("/api/sequences");
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to load sequences");
+      }
+
+      const numbers = (Array.isArray(data) ? data : [])
+        .map((item) => {
+          if (typeof item === "string" || typeof item === "number") {
+            return String(item);
+          }
+
+          if (isRecord(item)) {
+            const candidate =
+              item["sequenceNumber"] ??
+              item["SequenceNumber"] ??
+              item["sequence"] ??
+              item["seq"];
+
+            if (typeof candidate === "string" || typeof candidate === "number") {
+              return String(candidate);
+            }
+          }
+
+          return null;
+        })
+        .filter((val): val is string => Boolean(val));
+
+      setSequenceNumbers(numbers);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Something went wrong loading sequences";
+      setSequencesError(message);
+      setSequenceNumbers([]);
+    } finally {
+      setSequencesLoading(false);
+    }
   }
 
   function handleAdminMonthChange(value: number) {
@@ -1124,6 +1172,43 @@ export default function Home() {
                 <div className="space-y-3">
                   <div className="text-[11px] uppercase tracking-[0.16em] text-[#999]">
                     Bid Input (Dashboard)
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleLoadSequences}
+                        className="inline-flex items-center gap-2 rounded-md bg-[#4a90e2] px-3 py-1 text-white font-semibold shadow hover:bg-[#3a7bc6] disabled:opacity-60"
+                        disabled={sequencesLoading}
+                      >
+                        Load BOS 737 Trips
+                      </button>
+                      {sequencesLoading && (
+                        <span className="text-[11px] text-[#555]">Loading…</span>
+                      )}
+                    </div>
+                    {sequencesError && (
+                      <div className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-md px-2 py-1">
+                        Error: {sequencesError}
+                      </div>
+                    )}
+                    {sequenceNumbers.length > 0 && (
+                      <div className="rounded-md border border-[#e0e0e0] bg-[#f8f9fb] p-2">
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-[#6b7280] mb-1 font-semibold">
+                          BOS 737 Sequences
+                        </div>
+                        <ul className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-[11px] text-[#2f4058]">
+                          {sequenceNumbers.map((seq) => (
+                            <li
+                              key={seq}
+                              className="rounded border border-[#d6e3f5] bg-white px-2 py-[2px] text-center font-semibold"
+                            >
+                              {seq}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                   <form onSubmit={handleSubmit} className="space-y-3">
                     <div className="grid grid-cols-2 gap-2 text-xs">
