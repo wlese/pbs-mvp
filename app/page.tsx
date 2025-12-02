@@ -341,24 +341,39 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (loading) {
-      setProgress(5);
-      const interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 95) return prev;
-          const next = prev + Math.random() * 12;
-          return next >= 95 ? 95 : next;
-        });
-      }, 300);
+    if (!loading) return;
 
-      return () => clearInterval(interval);
-    }
+    setProgress((current) => (current > 0 ? current : 5));
 
-    if (!loading && progress > 0) {
+    let rafId: number;
+    const tick = () => {
+      setProgress((prev) => {
+        if (prev >= 92) return prev;
+
+        // Ease toward completion while staying shy of 100% until the request resolves.
+        const increment = Math.max(0.6, (92 - prev) * 0.035);
+        const next = prev + increment;
+        return next >= 92 ? 92 : next;
+      });
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(rafId);
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading || progress === 0) return;
+
+    if (progress < 100) {
       setProgress(100);
-      const timeout = setTimeout(() => setProgress(0), 400);
-      return () => clearTimeout(timeout);
+      return;
     }
+
+    const timeout = setTimeout(() => setProgress(0), 500);
+    return () => clearTimeout(timeout);
   }, [loading, progress]);
 
   const overlayVisible = loading || progress > 0;
