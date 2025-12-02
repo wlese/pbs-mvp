@@ -620,10 +620,14 @@ export default function Home() {
   const monthLabel = `${MONTHS[displayMonth]} ${displayYear}`;
   const calendarDays = buildCalendar(displayYear, displayMonth, adminDaysInMonth);
   const dayCells = Array.from({ length: adminDaysInMonth }, (_, idx) => idx + 1);
+  const dayGridStyle = {
+    gridTemplateColumns: `repeat(${adminDaysInMonth}, minmax(0, 1fr))`,
+  };
 
-  const isReserveLayer = Boolean(
-    result?.reserveProperties?.some((r) => r.layer === currentLayer)
-  );
+  const layerIsReserve = (layer: number) =>
+    Boolean(result?.reserveProperties?.some((r) => r.layer === layer));
+
+  const isReserveLayer = layerIsReserve(currentLayer);
 
   // Build a map of date → pairingRequests (using real span from pairings.json)
   const pairingDayMap = new Map<string, PairingRequest[]>();
@@ -638,6 +642,14 @@ export default function Home() {
       }
     }
   }
+
+  const hasOffRequest = (iso: string, layer: number) =>
+    result?.dayOffRequests?.some(
+      (r) => r.date === iso && r.layers?.includes(layer)
+    ) ?? false;
+
+  const hasPairingForLayer = (iso: string, layer: number) =>
+    (pairingDayMap.get(iso) ?? []).some((p) => p.layers?.includes(layer));
 
   const activeReserve =
     result?.reserveProperties?.find((r) => r.layer === currentLayer) ?? null;
@@ -866,57 +878,86 @@ export default function Home() {
                 <div className="w-full lg:w-[58%] space-y-3">
                   {/* Month strip */}
                   <div className="bg-[#e6e6e6] rounded-2xl p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-lg font-semibold text-[#555]">
+                    <div className="flex items-start gap-3 mb-2">
+                      <div className="text-lg font-semibold text-[#555] min-w-[132px]">
                         {monthLabel}
                       </div>
-                      <div
-                        className="grid gap-[1px] text-[10px] tracking-[0.12em] text-[#777] uppercase flex-1 max-w-[70%]"
-                        style={{ gridTemplateColumns: `repeat(${adminDaysInMonth}, minmax(0, 1fr))` }}
-                      >
-                        {dayCells.map((day) => (
-                          <div key={day} className="text-center leading-[14px]">
-                            {day}
-                          </div>
-                        ))}
+                      <div className="flex-1">
+                        <div
+                          className="grid gap-[1px] text-[10px] tracking-[0.12em] text-[#777] uppercase"
+                          style={dayGridStyle}
+                        >
+                          {dayCells.map((day) => (
+                            <div key={day} className="text-center leading-[14px]">
+                              {day}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     {/* Layer strip 1–10 */}
                     <div className="mt-2 space-y-1 text-xs">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((layer) => (
-                        <div key={layer} className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setCurrentLayer(layer)}
-                            className={`w-10 h-5 flex items-center justify-center rounded-full text-[11px] font-semibold ${
-                              layer === currentLayer
-                                ? "bg-[#4a90e2] text-white"
-                                : "bg-[#bdbdbd] text-[#444]"
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((layer) => {
+                        const reserveRow = layerIsReserve(layer);
+                        const isSelected = layer === currentLayer;
+
+                        return (
+                          <div
+                            key={layer}
+                            className={`flex items-center gap-2 rounded-xl px-2 py-1 border transition-shadow ${
+                              isSelected
+                                ? "border-[#4a90e2] bg-[#eef3ff] shadow-sm"
+                                : "border-transparent bg-white"
                             }`}
                           >
-                            {layer}
-                          </button>
-                          <div
-                            className="flex-1 grid gap-[1px]"
-                            style={{
-                              gridTemplateColumns: `repeat(${adminDaysInMonth}, minmax(0, 1fr))`,
-                            }}
-                          >
-                            {dayCells.map((day) => (
-                              <div
-                                key={day}
-                                className="h-3 rounded-sm bg-[#dcdcdc]"
-                                aria-hidden
-                              />
-                            ))}
+                            <button
+                              type="button"
+                              onClick={() => setCurrentLayer(layer)}
+                              className={`w-9 h-5 flex items-center justify-center rounded-full text-[11px] font-semibold border ${
+                                isSelected
+                                  ? "bg-[#4a90e2] text-white border-[#4a90e2]"
+                                  : "bg-[#d6d6d6] text-[#444] border-[#c5c5c5]"
+                              }`}
+                            >
+                              {layer}
+                            </button>
+                            <div
+                              className="flex-1 grid gap-[1px]"
+                              style={dayGridStyle}
+                            >
+                              {dayCells.map((day) => {
+                                const iso = dayKey(
+                                  new Date(displayYear, displayMonth, day)
+                                );
+                                const offDay = hasOffRequest(iso, layer);
+                                const pairingDay = hasPairingForLayer(iso, layer);
+
+                                const baseCell = "h-3 rounded-sm border";
+                                const colorClass = reserveRow
+                                  ? "bg-[#cfcfcf] border-[#b5b5b5]"
+                                  : pairingDay
+                                  ? "bg-[#7fbf4d] border-[#6aa23f]"
+                                  : offDay
+                                  ? "bg-[#8ebcf7] border-[#4a90e2]"
+                                  : "bg-[#dcdcdc] border-[#cfcfcf]";
+
+                                return (
+                                  <div
+                                    key={day}
+                                    className={`${baseCell} ${colorClass}`}
+                                    aria-hidden
+                                  />
+                                );
+                              })}
+                            </div>
+                            {reserveRow && (
+                              <span className="text-[10px] font-semibold text-[#6b6b6b] uppercase px-2 py-[1px] bg-[#ededed] border border-[#c9c9c9] rounded-full">
+                                Reserve
+                              </span>
+                            )}
                           </div>
-                          {layer >= 8 && (
-                            <span className="text-[10px] text-[#777] uppercase ml-1">
-                              Reserve
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
