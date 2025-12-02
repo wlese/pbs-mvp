@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Image from "next/image";
 import pairingsData from "@/data/pairings.json";
 
 // ---------- Types ----------
@@ -105,6 +106,9 @@ const TABS: TabType[] = [
   "Award",
   "Standing Bid",
 ];
+
+const VALID_USERNAME = "test";
+const VALID_PASSWORD = "test";
 
 const MONTHS = [
   "January",
@@ -300,6 +304,13 @@ function dayKey(date: Date) {
 // ---------- Component ----------
 
 export default function Home() {
+  // Authentication
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   // Inputs
   const [domicile, setDomicile] = useState("BOS");
   const [seat, setSeat] = useState<"CA" | "FO">("FO");
@@ -322,6 +333,17 @@ export default function Home() {
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("pbs-authenticated");
+    if (stored === "true") {
+      setIsAuthenticated(true);
+    }
+    setAuthChecked(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     setMounted(true);
 
     const existing = document.getElementById("pbs-overlay-root");
@@ -338,7 +360,7 @@ export default function Home() {
     return () => {
       document.body.removeChild(node);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!loading) return;
@@ -394,6 +416,20 @@ export default function Home() {
     };
   }, [overlayVisible, mounted]);
 
+  function handleLogin(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoginError(null);
+
+    if (username.trim() === VALID_USERNAME && password === VALID_PASSWORD) {
+      setIsAuthenticated(true);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("pbs-authenticated", "true");
+      }
+    } else {
+      setLoginError("Invalid username or password. Please use test/test.");
+    }
+  }
+
     async function handleSubmit(e: React.FormEvent) {
       e.preventDefault();
       setLoading(true);
@@ -448,6 +484,88 @@ export default function Home() {
 
   function handleCopy(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
+  }
+
+  if (!authChecked) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-[#f4f7fb] text-[#4a4a4a]">
+        <div className="text-sm font-medium">Loading...</div>
+      </main>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-[#f7f9ff] to-[#e4edff] flex items-center justify-center px-4">
+        <div className="bg-white border border-[#dce8ff] shadow-2xl rounded-3xl max-w-md w-full p-8 space-y-6">
+          <div className="flex items-center gap-4">
+            <Image
+              src="/crew-bid-logo.svg"
+              alt="Crew Bid logo"
+              width={64}
+              height={64}
+              className="w-16 h-16 drop-shadow-md"
+              priority
+            />
+            <div className="space-y-1">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-[#4a90e2] font-semibold">
+                PBS Bidding Tool
+              </p>
+              <h1 className="text-2xl font-bold text-[#23395b]">Log in to Crew Bid</h1>
+              <p className="text-sm text-[#4a4a4a]">
+                Enter your credentials to access the bidding workspace.
+              </p>
+            </div>
+          </div>
+
+          <form className="space-y-4" onSubmit={handleLogin}>
+            <div className="space-y-1">
+              <label className="block text-[11px] uppercase tracking-[0.16em] text-[#7487a6] font-semibold">
+                Username
+              </label>
+              <input
+                type="text"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full border border-[#c7dff8] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a90e2] bg-[#f9fbff]"
+                placeholder="Enter username"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] uppercase tracking-[0.16em] text-[#7487a6] font-semibold">
+                Password
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-[#c7dff8] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a90e2] bg-[#f9fbff]"
+                placeholder="Enter password"
+              />
+            </div>
+
+            {loginError && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-[#4a90e2] text-white rounded-xl py-2.5 text-sm font-semibold shadow-md hover:bg-[#3c7bc4] transition-colors"
+            >
+              Sign In
+            </button>
+            <p className="text-xs text-[#4a4a4a] text-center">
+              Use <span className="font-semibold">test</span> / <span className="font-semibold">test</span> to enter the PBS bidding tool.
+            </p>
+          </form>
+        </div>
+      </main>
+    );
   }
 
   // Calendar based on result
