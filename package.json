@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "parse-bid": "tsc scripts/convertBidPacket.ts --module commonjs --target es2020 --outDir scripts/dist && node scripts/dist/convertBidPacket.js"
   },
   "dependencies": {
     "next": "16.0.4",
