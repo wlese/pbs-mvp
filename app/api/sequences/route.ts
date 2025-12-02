@@ -1,48 +1,33 @@
-import { NextResponse } from "next/server";
+// app/api/sequences/route.ts
+import { NextRequest } from "next/server";
 import { getBos737Dec2025Packet } from "@/lib/bidData";
 
-function parseNumberParam(value: string | null) {
-  if (value === null) return null;
-  const parsed = Number(value);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   const packet = getBos737Dec2025Packet();
-  const sequences = Array.isArray(packet.sequences) ? packet.sequences : [];
 
-  const searchParams = new URL(request.url).searchParams;
-  const minDays = parseNumberParam(searchParams.get("minDays"));
-  const maxDays = parseNumberParam(searchParams.get("maxDays"));
-  const startDayOfWeek = searchParams.get("startDayOfWeek");
+  const { searchParams } = new URL(req.url);
 
-  const filteredSequences = sequences.filter((sequence) => {
-    const dutyDaysCount = Array.isArray((sequence as { dutyDays?: unknown }).dutyDays)
-      ? ((sequence as { dutyDays?: unknown[] }).dutyDays?.length ?? 0)
-      : 0;
+  const minDays = Number(searchParams.get("minDays") ?? 1);
+  const maxDays = Number(searchParams.get("maxDays") ?? 7);
+  const startDayOfWeek = searchParams.get("startDayOfWeek"); // "MO", "TU", etc.
 
-    if (minDays !== null && dutyDaysCount < minDays) {
-      return false;
-    }
+  // Basic sanity check: make sure sequences exist
+  const allSequences: any[] = packet.sequences ?? [];
 
-    if (maxDays !== null && dutyDaysCount > maxDays) {
-      return false;
-    }
+  const filtered = allSequences.filter((seq) => {
+    const days = seq.dutyDays?.length ?? 0;
+    if (days < minDays || days > maxDays) return false;
 
     if (startDayOfWeek) {
-      const dayOfWeekCodes = Array.isArray(
-        (sequence as { startDays?: { dayOfWeekCodes?: unknown } }).startDays?.dayOfWeekCodes
-      )
-        ? ((sequence as { startDays?: { dayOfWeekCodes?: string[] } }).startDays?.dayOfWeekCodes ?? [])
-        : [];
-
-      if (!dayOfWeekCodes.includes(startDayOfWeek)) {
-        return false;
-      }
+      const codes: string[] = seq.startDays?.dayOfWeekCodes ?? [];
+      if (!codes.includes(startDayOfWeek)) return false;
     }
 
     return true;
   });
 
-  return NextResponse.json(filteredSequences);
+  return Response.json({
+    count: filtered.length,
+    sequences: filtered,
+  });
 }
