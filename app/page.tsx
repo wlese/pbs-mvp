@@ -278,7 +278,11 @@ function inferYearMonth(result: PbsResult | null): {
   return { year: 2025, month: 11, label: "December 2025" };
 }
 
-function buildCalendar(year: number, month: number): CalendarDay[] {
+function buildCalendar(
+  year: number,
+  month: number,
+  daysInMonthLimit?: number
+): CalendarDay[] {
   const firstOfMonth = new Date(year, month, 1);
   const startDay = firstOfMonth.getDay(); // 0=Sun
   const days: CalendarDay[] = [];
@@ -290,7 +294,11 @@ function buildCalendar(year: number, month: number): CalendarDay[] {
     days.push({
       date: d,
       day: d.getDate(),
-      inMonth: d.getMonth() === month,
+      inMonth:
+        d.getMonth() === month &&
+        (typeof daysInMonthLimit === "number"
+          ? d.getDate() <= daysInMonthLimit
+          : true),
     });
   }
 
@@ -299,6 +307,11 @@ function buildCalendar(year: number, month: number): CalendarDay[] {
 
 function dayKey(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function deriveBidMonthDays(year: number, month: number) {
+  const naturalMonthLength = new Date(year, month + 1, 0).getDate();
+  return Math.min(31, Math.max(30, naturalMonthLength));
 }
 
 // ---------- Component ----------
@@ -331,6 +344,15 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+  const [viewMode, setViewMode] = useState<"user" | "admin">("user");
+
+  const inferredYearMonth = inferYearMonth(result);
+  const [adminYear, setAdminYear] = useState<number>(inferredYearMonth.year);
+  const [adminMonth, setAdminMonth] = useState<number>(inferredYearMonth.month);
+  const [adminDaysInMonth, setAdminDaysInMonth] = useState<number>(() =>
+    deriveBidMonthDays(inferredYearMonth.year, inferredYearMonth.month)
+  );
+  const [adminTouched, setAdminTouched] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -416,6 +438,15 @@ export default function Home() {
     };
   }, [overlayVisible, mounted]);
 
+  useEffect(() => {
+    const next = inferYearMonth(result);
+    if (adminTouched) return;
+
+    setAdminYear(next.year);
+    setAdminMonth(next.month);
+    setAdminDaysInMonth(deriveBidMonthDays(next.year, next.month));
+  }, [result, adminTouched]);
+
   function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoginError(null);
@@ -484,6 +515,21 @@ export default function Home() {
 
   function handleCopy(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
+  }
+
+  function handleAdminMonthChange(value: number) {
+    setAdminMonth(value);
+    setAdminTouched(true);
+  }
+
+  function handleAdminYearChange(value: number) {
+    setAdminYear(value);
+    setAdminTouched(true);
+  }
+
+  function handleAdminDayCountChange(value: number) {
+    setAdminDaysInMonth(value);
+    setAdminTouched(true);
   }
 
   if (!authChecked) {
@@ -568,9 +614,12 @@ export default function Home() {
     );
   }
 
-  // Calendar based on result
-  const { year, month, label: monthLabel } = inferYearMonth(result);
-  const calendarDays = buildCalendar(year, month);
+  // Calendar based on admin selection (defaulted from inferred result)
+  const displayYear = adminYear;
+  const displayMonth = adminMonth;
+  const monthLabel = `${MONTHS[displayMonth]} ${displayYear}`;
+  const calendarDays = buildCalendar(displayYear, displayMonth, adminDaysInMonth);
+  const dayCells = Array.from({ length: adminDaysInMonth }, (_, idx) => idx + 1);
 
   const isReserveLayer = Boolean(
     result?.reserveProperties?.some((r) => r.layer === currentLayer)
@@ -632,132 +681,280 @@ export default function Home() {
 
       <main className="min-h-screen bg-[#f2f2f2] text-slate-900 flex justify-center p-4">
         <div className="w-full max-w-6xl bg-[#f7f7f7] rounded-3xl shadow-lg border border-slate-300 overflow-hidden">
-        {/* Top PBS-style tab bar */}
-        <div className="flex items-center bg-[#d0d0d0] text-[15px] font-semibold">
-          {TABS.map((tab) => {
-            const selected = tab === activeTab;
-            return (
-              <button
-                key={tab}
-                type="button"
-                className={`px-4 py-3 border-r border-[#b8b8b8] ${
-                  selected
-                    ? "bg-white text-[#4a90e2] rounded-t-3xl border-t-2 border-x-2 border-[#c7dff8]"
-                    : "bg-[#d0d0d0] text-[#555]"
-                }`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab}
-              </button>
-            );
-          })}
-          <div className="flex-1 bg-[#d0d0d0]" />
-        </div>
-
-        {(loading || progress > 0) && (
-          <div className="px-4 pt-3">
-            <div className="flex items-center gap-3 bg-white border border-slate-300 rounded-xl shadow-sm p-3">
-              <div className="flex-1">
-                <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.14em]">
-                  Generating PBS Bid
+          <div className="flex items-center justify-between bg-white border-b border-slate-300 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Image
+                src="/crew-bid-logo.svg"
+                alt="Crew Bid logo"
+                width={44}
+                height={44}
+                className="w-11 h-11"
+                priority
+              />
+              <div className="leading-tight">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#4a90e2] font-semibold">
+                  Crew Bid
                 </div>
-                <div className="h-2 mt-2 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#4a90e2] transition-all duration-200"
-                    style={{ width: `${progress}%` }}
-                  />
+                <div className="text-sm font-semibold text-[#2f4058]">
+                  PBS Bidding Tool
                 </div>
               </div>
-              <div className="text-sm font-bold text-[#4a4a4a] w-14 text-right">
-                {Math.round(progress)}%
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[#6b7a90] font-semibold">
+                Mode
+              </div>
+              <div className="flex items-center bg-[#e6ebf3] rounded-full p-1 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("user")}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                    viewMode === "user"
+                      ? "bg-white text-[#23426d] shadow"
+                      : "text-[#4a4a4a]"
+                  }`}
+                >
+                  User
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("admin")}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                    viewMode === "admin"
+                      ? "bg-white text-[#23426d] shadow"
+                      : "text-[#4a4a4a]"
+                  }`}
+                >
+                  Admin
+                </button>
               </div>
             </div>
           </div>
-        )}
 
-        {/* Main layout */}
-        <div className="flex flex-col lg:flex-row gap-4 p-4">
-          {/* LEFT: month strip + calendar */}
-          <div className="w-full lg:w-[58%] space-y-3">
-            {/* Month strip */}
-            <div className="bg-[#e6e6e6] rounded-2xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-lg font-semibold text-[#555]">
-                  {monthLabel}
+          {viewMode === "admin" ? (
+            <div className="p-6 space-y-4">
+              <div className="bg-white border border-[#dbe4f2] rounded-2xl p-4 space-y-3 shadow-sm">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-[#6b7a90] font-semibold">
+                  Admin configuration
                 </div>
-                <div className="text-xs tracking-[0.18em] text-[#999] uppercase">
-                  2 &nbsp; · · &nbsp; 8 &nbsp; · · &nbsp; 15 &nbsp; · · &nbsp;
-                  22 &nbsp; · · &nbsp; 29 · 31
-                </div>
-              </div>
-              {/* Layer strip 1–10 */}
-              <div className="mt-2 space-y-1 text-xs">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((layer) => (
-                  <div key={layer} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentLayer(layer)}
-                      className={`w-10 h-5 flex items-center justify-center rounded-full text-[11px] font-semibold ${
-                        layer === currentLayer
-                          ? "bg-[#4a90e2] text-white"
-                          : "bg-[#bdbdbd] text-[#444]"
-                      }`}
+                <p className="text-sm text-[#4a4a4a]">
+                  Choose the bid month settings that will appear on the User view.
+                  Changes save automatically.
+                </p>
+
+                <div className="grid md:grid-cols-3 gap-3 text-sm">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-[#8a9ab5] font-semibold">
+                      Month
+                    </span>
+                    <select
+                      className="border border-[#c7dff8] rounded-lg px-3 py-2 bg-[#f9fbff]"
+                      value={adminMonth}
+                      onChange={(e) => handleAdminMonthChange(Number(e.target.value))}
                     >
-                      {layer}
-                    </button>
-                    <div className="flex-1 grid grid-cols-24 gap-[1px]">
-                      {Array.from({ length: 24 }).map((_, idx) => (
-                        <div
-                          key={idx}
-                          className="h-3 rounded-sm bg-[#dcdcdc]"
-                        />
+                      {MONTHS.map((m, idx) => (
+                        <option key={m} value={idx}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-[#8a9ab5] font-semibold">
+                      Year
+                    </span>
+                    <input
+                      type="number"
+                      className="border border-[#c7dff8] rounded-lg px-3 py-2 bg-[#f9fbff]"
+                      value={adminYear}
+                      min={2020}
+                      max={2100}
+                      onChange={(e) => handleAdminYearChange(Number(e.target.value))}
+                    />
+                  </label>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-[#8a9ab5] font-semibold">
+                      Bid month length
+                    </span>
+                    <div className="flex items-center gap-2 bg-[#eef3fb] border border-[#c7dff8] rounded-lg p-2">
+                      {[30, 31].map((days) => (
+                        <button
+                          key={days}
+                          type="button"
+                          onClick={() => handleAdminDayCountChange(days)}
+                          className={`flex-1 py-2 rounded-md text-sm font-semibold transition-colors ${
+                            adminDaysInMonth === days
+                              ? "bg-white text-[#1f3f6a] shadow"
+                              : "text-[#4a4a4a]"
+                          }`}
+                        >
+                          {days}-Day
+                        </button>
                       ))}
                     </div>
-                    {layer >= 8 && (
-                      <span className="text-[10px] text-[#777] uppercase ml-1">
-                        Reserve
-                      </span>
-                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Big calendar for current layer */}
-            <div className="bg-[#4a4a4a] rounded-2xl pt-3 pb-4 px-3">
-              <div className="flex items-center justify-between mb-2 px-1">
-                <div className="text-sm font-semibold text-white">
-                  LAYER {currentLayer}
-                  {activeReserve ? (
-                    <span className="ml-2 text-[11px] uppercase text-[#b2f5ea]">
-                      Reserve Layer
-                    </span>
-                  ) : (
-                    <span className="ml-2 text-[11px] uppercase text-[#d2e6ff]">
-                      Lineholder Layer
-                    </span>
-                  )}
                 </div>
-                {result?.summary && (
-                  <span className="text-[10px] text-[#ccc] max-w-[60%] text-right line-clamp-2">
-                    {result.summary}
-                  </span>
-                )}
-              </div>
 
-              <div className="grid grid-cols-7 text-[11px] text-[#dbdbdb] mb-1">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                  (d) => (
-                    <div key={d} className="text-center pb-1">
-                      {d}
+                <div className="bg-[#eef3ff] border border-[#d1defa] rounded-xl px-3 py-2 text-sm text-[#2f3f58] flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold">User view will show</div>
+                    <div className="text-[13px] text-[#4a4a4a]">
+                      {monthLabel} • {adminDaysInMonth}-day bid month
                     </div>
-                  )
-                )}
+                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#4a90e2] font-semibold">
+                    Auto-synced
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-7 gap-[2px]">
-                {calendarDays.map((d, idx) => {
-                  const iso = dayKey(d.date);
+              <p className="text-xs text-[#6b7280]">
+                Switch back to <strong>User</strong> mode to see the bidding workspace with these settings applied.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Top PBS-style tab bar */}
+              <div className="flex items-center bg-[#d0d0d0] text-[15px] font-semibold">
+                {TABS.map((tab) => {
+                  const selected = tab === activeTab;
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      className={`px-4 py-3 border-r border-[#b8b8b8] ${
+                        selected
+                          ? "bg-white text-[#4a90e2] rounded-t-3xl border-t-2 border-x-2 border-[#c7dff8]"
+                          : "bg-[#d0d0d0] text-[#555]"
+                      }`}
+                      onClick={() => setActiveTab(tab)}
+                    >
+                      {tab}
+                    </button>
+                  );
+                })}
+                <div className="flex-1 bg-[#d0d0d0]" />
+              </div>
+
+              {(loading || progress > 0) && (
+                <div className="px-4 pt-3">
+                  <div className="flex items-center gap-3 bg-white border border-slate-300 rounded-xl shadow-sm p-3">
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.14em]">
+                        Generating PBS Bid
+                      </div>
+                      <div className="h-2 mt-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#4a90e2] transition-all duration-200"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-sm font-bold text-[#4a4a4a] w-14 text-right">
+                      {Math.round(progress)}%
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Main layout */}
+              <div className="flex flex-col lg:flex-row gap-4 p-4">
+                {/* LEFT: month strip + calendar */}
+                <div className="w-full lg:w-[58%] space-y-3">
+                  {/* Month strip */}
+                  <div className="bg-[#e6e6e6] rounded-2xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-lg font-semibold text-[#555]">
+                        {monthLabel}
+                      </div>
+                      <div
+                        className="grid gap-[1px] text-[10px] tracking-[0.12em] text-[#777] uppercase flex-1 max-w-[70%]"
+                        style={{ gridTemplateColumns: `repeat(${adminDaysInMonth}, minmax(0, 1fr))` }}
+                      >
+                        {dayCells.map((day) => (
+                          <div key={day} className="text-center leading-[14px]">
+                            {day}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Layer strip 1–10 */}
+                    <div className="mt-2 space-y-1 text-xs">
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((layer) => (
+                        <div key={layer} className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentLayer(layer)}
+                            className={`w-10 h-5 flex items-center justify-center rounded-full text-[11px] font-semibold ${
+                              layer === currentLayer
+                                ? "bg-[#4a90e2] text-white"
+                                : "bg-[#bdbdbd] text-[#444]"
+                            }`}
+                          >
+                            {layer}
+                          </button>
+                          <div
+                            className="flex-1 grid gap-[1px]"
+                            style={{
+                              gridTemplateColumns: `repeat(${adminDaysInMonth}, minmax(0, 1fr))`,
+                            }}
+                          >
+                            {dayCells.map((day) => (
+                              <div
+                                key={day}
+                                className="h-3 rounded-sm bg-[#dcdcdc]"
+                                aria-hidden
+                              />
+                            ))}
+                          </div>
+                          {layer >= 8 && (
+                            <span className="text-[10px] text-[#777] uppercase ml-1">
+                              Reserve
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Big calendar for current layer */}
+                  <div className="bg-[#4a4a4a] rounded-2xl pt-3 pb-4 px-3">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <div className="text-sm font-semibold text-white">
+                        LAYER {currentLayer}
+                        {activeReserve ? (
+                          <span className="ml-2 text-[11px] uppercase text-[#b2f5ea]">
+                            Reserve Layer
+                          </span>
+                        ) : (
+                          <span className="ml-2 text-[11px] uppercase text-[#d2e6ff]">
+                            Lineholder Layer
+                          </span>
+                        )}
+                      </div>
+                      {result?.summary && (
+                        <span className="text-[10px] text-[#ccc] max-w-[60%] text-right line-clamp-2">
+                          {result.summary}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-7 text-[11px] text-[#dbdbdb] mb-1">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                        (d) => (
+                          <div key={d} className="text-center pb-1">
+                            {d}
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-[2px]">
+                      {calendarDays.map((d, idx) => {
+                        const iso = dayKey(d.date);
 
                   const offReqs =
                     result?.dayOffRequests
@@ -1497,16 +1694,18 @@ export default function Home() {
               </div>
             )}
 
-            {result?.raw && (
-              <div className="bg-yellow-50 border border-yellow-300 rounded-2xl p-3 text-[11px] text-yellow-900 whitespace-pre-wrap">
-                Raw model output (fallback):
-                {"\n"}
-                {result.raw}
-              </div>
-            )}
+              {result?.raw && (
+                <div className="bg-yellow-50 border border-yellow-300 rounded-2xl p-3 text-[11px] text-yellow-900 whitespace-pre-wrap">
+                  Raw model output (fallback):
+                  {"\n"}
+                  {result.raw}
+                </div>
+              )}
+            </div>
           </div>
+          </>
+        )}
         </div>
-      </div>
       </main>
     </>
   );
