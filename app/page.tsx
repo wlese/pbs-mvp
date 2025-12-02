@@ -107,6 +107,14 @@ const TABS: TabType[] = [
   "Standing Bid",
 ];
 
+const PROGRESS_STEPS = [
+  "Loading PBS rules…",
+  "Analyzing your schedule preferences…",
+  "Evaluating available pairings…",
+  "Optimizing bid strategy…",
+  "Finalizing recommended bid…",
+];
+
 const VALID_USERNAME = "test";
 const VALID_PASSWORD = "test";
 
@@ -341,7 +349,7 @@ export default function Home() {
   const [result, setResult] = useState<PbsResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [progressStage, setProgressStage] = useState<number>(-1);
   const [mounted, setMounted] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [viewMode, setViewMode] = useState<"user" | "admin">("user");
@@ -387,40 +395,28 @@ export default function Home() {
   useEffect(() => {
     if (!loading) return;
 
-    setProgress((current) => (current > 0 ? current : 5));
+    setProgressStage((prev) => (prev >= 0 ? prev : 0));
 
-    let rafId: number;
-    const tick = () => {
-      setProgress((prev) => {
-        if (prev >= 92) return prev;
+    const interval = setInterval(() => {
+      setProgressStage((prev) =>
+        Math.min(prev + 1, PROGRESS_STEPS.length - 1)
+      );
+    }, 1200);
 
-        // Ease toward completion while staying shy of 100% until the request resolves.
-        const increment = Math.max(0.6, (92 - prev) * 0.035);
-        const next = prev + increment;
-        return next >= 92 ? 92 : next;
-      });
-
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-
-    return () => cancelAnimationFrame(rafId);
+    return () => clearInterval(interval);
   }, [loading]);
 
   useEffect(() => {
-    if (loading || progress === 0) return;
+    if (loading) return;
+    if (progressStage === -1) return;
 
-    if (progress < 100) {
-      setProgress(100);
-      return;
-    }
+    setProgressStage(PROGRESS_STEPS.length - 1);
 
-    const timeout = setTimeout(() => setProgress(0), 500);
+    const timeout = setTimeout(() => setProgressStage(-1), 700);
     return () => clearTimeout(timeout);
-  }, [loading, progress]);
+  }, [loading, progressStage]);
 
-  const overlayVisible = loading || progress > 0;
+  const overlayVisible = loading || progressStage >= 0;
 
   useEffect(() => {
     if (!mounted) return;
@@ -656,6 +652,42 @@ export default function Home() {
   const fallbackReserve = result?.reserveProperties?.[0] ?? null;
   const reserveForPanel = activeReserve || fallbackReserve;
 
+  const renderProgressSteps = (variant: "overlay" | "inline") => (
+    <ol
+      className={
+        variant === "overlay"
+          ? "space-y-2 text-left"
+          : "space-y-1 text-left text-sm"
+      }
+    >
+      {PROGRESS_STEPS.map((step, idx) => {
+        const reached =
+          progressStage >= idx ||
+          (!loading && progressStage === PROGRESS_STEPS.length - 1);
+        const isCurrent = loading && progressStage === idx;
+
+        return (
+          <li key={step} className="flex items-center gap-3">
+            <span
+              className={`w-3 h-3 rounded-full ${
+                reached ? "bg-[#4a90e2]" : "bg-slate-300"
+              } ${isCurrent ? "animate-pulse" : ""}`}
+            />
+            <span
+              className={
+                reached
+                  ? "text-[#23426d] font-semibold"
+                  : "text-[#6b7280]"
+              }
+            >
+              {step}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+
   const overlay =
     mounted && portalRoot && overlayVisible
       ? createPortal(
@@ -671,16 +703,10 @@ export default function Home() {
               <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.2em]">
                 Generating PBS Bid...
               </div>
-              <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#4a90e2] transition-all duration-300"
-                  style={{ width: `${Math.max(progress, 8)}%` }}
-                />
-              </div>
               <div className="text-[13px] text-[#4a4a4a]">
-                Please wait while we build a single bid type per layer (lineholder
-                pairings or reserve request).
+                We’re working through the steps below to prepare your bid.
               </div>
+              <div className="pt-1">{renderProgressSteps("overlay")}</div>
             </div>
           </div>,
           portalRoot
@@ -851,22 +877,14 @@ export default function Home() {
                 <div className="flex-1 bg-[#d0d0d0]" />
               </div>
 
-              {(loading || progress > 0) && (
+              {(loading || progressStage >= 0) && (
                 <div className="px-4 pt-3">
                   <div className="flex items-center gap-3 bg-white border border-slate-300 rounded-xl shadow-sm p-3">
-                    <div className="flex-1">
+                    <div className="flex-1 space-y-2">
                       <div className="text-xs font-semibold text-[#4a90e2] uppercase tracking-[0.14em]">
                         Generating PBS Bid
                       </div>
-                      <div className="h-2 mt-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#4a90e2] transition-all duration-200"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div className="text-sm font-bold text-[#4a4a4a] w-14 text-right">
-                      {Math.round(progress)}%
+                      {renderProgressSteps("inline")}
                     </div>
                   </div>
                 </div>
