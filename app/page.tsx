@@ -45,6 +45,18 @@ type ReserveProperty = {
   notes?: string;
 };
 
+type SequenceDutyDay = {
+  raw?: string;
+  legs?: string[];
+};
+
+type PairingSequence = {
+  sequenceNumber?: string;
+  instancesInMonth?: number;
+  totals?: { credit?: number };
+  dutyDays?: SequenceDutyDay[];
+};
+
 type PbsResult = {
   summary?: string;
   daysOffProperties?: DaysOffProperty[];
@@ -353,10 +365,10 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [viewMode, setViewMode] = useState<"user" | "admin">("user");
-  const [sequenceNumbers, setSequenceNumbers] = useState<string[]>([]);
+  const [pairingSequences, setPairingSequences] = useState<PairingSequence[]>([]);
   const [sequencesLoading, setSequencesLoading] = useState(false);
   const [sequencesError, setSequencesError] = useState<string | null>(null);
-  const [debugSequences, setDebugSequences] = useState<any[]>([]);
+  const [debugSequences, setDebugSequences] = useState<PairingSequence[]>([]);
   const [debugLoading, setDebugLoading] = useState(false);
   const [debugError, setDebugError] = useState<string | null>(null);
 
@@ -531,34 +543,22 @@ export default function Home() {
         throw new Error(data?.error || "Failed to load sequences");
       }
 
-      const numbers = (Array.isArray(data) ? data : [])
-        .map((item) => {
-          if (typeof item === "string" || typeof item === "number") {
-            return String(item);
-          }
+      const rawSequences: unknown = Array.isArray(data?.sequences)
+        ? data.sequences
+        : Array.isArray(data)
+        ? data
+        : [];
 
-          if (isRecord(item)) {
-            const candidate =
-              item["sequenceNumber"] ??
-              item["SequenceNumber"] ??
-              item["sequence"] ??
-              item["seq"];
+      const normalized = (Array.isArray(rawSequences) ? rawSequences : [])
+        .filter((item): item is PairingSequence => isRecord(item))
+        .map((item) => ({ ...item }));
 
-            if (typeof candidate === "string" || typeof candidate === "number") {
-              return String(candidate);
-            }
-          }
-
-          return null;
-        })
-        .filter((val): val is string => Boolean(val));
-
-      setSequenceNumbers(numbers);
+      setPairingSequences(normalized);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Something went wrong loading sequences";
       setSequencesError(message);
-      setSequenceNumbers([]);
+      setPairingSequences([]);
     } finally {
       setSequencesLoading(false);
     }
@@ -920,6 +920,106 @@ export default function Home() {
                 </div>
               </div>
 
+              <div className="bg-white border border-[#dbe4f2] rounded-2xl p-4 space-y-3 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-[#6b7a90] font-semibold">
+                      Pairing data
+                    </div>
+                    <p className="text-sm text-[#4a4a4a]">
+                      Load the latest BOS 737 pairings and review their duty day details.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLoadSequences}
+                    className="inline-flex items-center gap-2 rounded-md bg-[#4a90e2] px-3 py-1 text-white text-sm font-semibold shadow hover:bg-[#3a7bc6] disabled:opacity-60"
+                    disabled={sequencesLoading}
+                  >
+                    Load 737 Pairings
+                  </button>
+                </div>
+
+                {sequencesError && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                    Error loading pairings: {sequencesError}
+                  </div>
+                )}
+
+                {sequencesLoading && (
+                  <div className="text-sm text-[#4a4a4a] bg-[#eef3ff] border border-[#d1defa] rounded-md px-3 py-2">
+                    Loading BOS 737 pairings…
+                  </div>
+                )}
+
+                {pairingSequences.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#6b7a90] font-semibold">
+                      {pairingSequences.length} pairings loaded
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
+                      {pairingSequences.map((seq, idx) => {
+                        const sequenceNumber = seq.sequenceNumber ?? "Unknown";
+                        const credit =
+                          typeof seq.totals === "object" && seq.totals !== null
+                            ? (seq.totals as { credit?: number }).credit
+                            : undefined;
+                        const instances = seq.instancesInMonth;
+                        const dutyDays = Array.isArray(seq.dutyDays)
+                          ? seq.dutyDays
+                          : [];
+
+                        return (
+                          <div
+                            key={`${sequenceNumber}-${idx}`}
+                            className="border border-[#dbe4f2] rounded-xl bg-[#f9fbff] p-3 space-y-2 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-sm font-semibold text-[#23426d]">
+                                Pairing {sequenceNumber}
+                              </div>
+                              <div className="text-[11px] text-[#4a4a4a] text-right leading-4">
+                                {instances ? <div>{instances}× in month</div> : null}
+                                {credit ? <div className="font-semibold">{credit} credit</div> : null}
+                              </div>
+                            </div>
+
+                            {dutyDays.length > 0 ? (
+                              <ul className="space-y-1 text-xs text-[#2f4058]">
+                                {dutyDays.map((day, dayIdx) => (
+                                  <li
+                                    key={`${sequenceNumber}-day-${dayIdx}`}
+                                    className="rounded-md border border-[#d6e3f5] bg-white px-2 py-1"
+                                  >
+                                    <div className="font-semibold text-[#23426d]">Duty Day {dayIdx + 1}</div>
+                                    {day.raw ? <div className="whitespace-pre-wrap">{day.raw}</div> : null}
+                                    {Array.isArray(day.legs) && day.legs.length > 0 && (
+                                      <ul className="mt-1 space-y-[2px] text-[11px] text-[#3d4c66]">
+                                        {day.legs.map((leg, legIdx) => (
+                                          <li key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`} className="flex gap-1">
+                                            <span className="text-[10px] uppercase tracking-[0.1em] text-[#8a9ab5] font-semibold">
+                                              Leg {legIdx + 1}:
+                                            </span>
+                                            <span className="break-words">{leg}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-xs text-[#6b7280]">No duty day details available.</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <p className="text-xs text-[#6b7280]">
                 Switch back to <strong>User</strong> mode to see the bidding workspace with these settings applied.
               </p>
@@ -1196,43 +1296,10 @@ export default function Home() {
                   <div className="text-[11px] uppercase tracking-[0.16em] text-[#999]">
                     Bid Input (Dashboard)
                   </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleLoadSequences}
-                        className="inline-flex items-center gap-2 rounded-md bg-[#4a90e2] px-3 py-1 text-white font-semibold shadow hover:bg-[#3a7bc6] disabled:opacity-60"
-                        disabled={sequencesLoading}
-                      >
-                        Load BOS 737 Trips
-                      </button>
-                      {sequencesLoading && (
-                        <span className="text-[11px] text-[#555]">Loading…</span>
-                      )}
-                    </div>
-                    {sequencesError && (
-                      <div className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-md px-2 py-1">
-                        Error: {sequencesError}
-                      </div>
-                    )}
-                    {sequenceNumbers.length > 0 && (
-                      <div className="rounded-md border border-[#e0e0e0] bg-[#f8f9fb] p-2">
-                        <div className="text-[10px] uppercase tracking-[0.16em] text-[#6b7280] mb-1 font-semibold">
-                          BOS 737 Sequences
-                        </div>
-                        <ul className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-[11px] text-[#2f4058]">
-                          {sequenceNumbers.map((seq) => (
-                            <li
-                              key={seq}
-                              className="rounded border border-[#d6e3f5] bg-white px-2 py-[2px] text-center font-semibold"
-                            >
-                              {seq}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
+                  <p className="text-xs text-[#4a4a4a]">
+                    Enter your bid preferences below. Pairing data management now lives in
+                    the Admin tab.
+                  </p>
                   <form onSubmit={handleSubmit} className="space-y-3">
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
@@ -1894,7 +1961,7 @@ export default function Home() {
         )}
 
         <ul className="mt-2 max-h-64 overflow-auto space-y-1">
-          {debugSequences.map((seq: any) => (
+          {debugSequences.map((seq) => (
             <li key={seq.sequenceNumber} className="border rounded px-2 py-1">
               SEQ {seq.sequenceNumber} — {seq.dutyDays?.length ?? 0} day(s)
             </li>

@@ -1,8 +1,7 @@
 // app/api/sequences/route.ts
-import { NextRequest } from "next/server";
 import { getBos737Dec2025Packet } from "@/lib/bidData";
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const packet = getBos737Dec2025Packet();
   const sequences = packet.sequences ?? [];
 
