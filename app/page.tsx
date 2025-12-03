@@ -1016,19 +1016,40 @@ export default function Home() {
                                     className="rounded-md border border-[#d6e3f5] bg-white px-2 py-1"
                                   >
                                     <div className="font-semibold text-[#23426d]">Duty Day {dayIdx + 1}</div>
-                                    {day.raw ? <div className="whitespace-pre-wrap">{day.raw}</div> : null}
+                                    {day.reportLine ? (
+                                      <div className="whitespace-pre-wrap">{day.reportLine}</div>
+                                    ) : null}
                                     {Array.isArray(day.legs) && day.legs.length > 0 && (
                                       <ul className="mt-1 space-y-[2px] text-[11px] text-[#3d4c66]">
                                         {day.legs.map((leg, legIdx) => (
                                           <li key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`} className="flex gap-1">
                                             <span className="text-[10px] uppercase tracking-[0.1em] text-[#8a9ab5] font-semibold">
-                                              Leg {legIdx + 1}:
+                                              LEG {legIdx + 1}:
                                             </span>
-                                            <span className="break-words">{leg}</span>
+                                            <span className="break-words">
+                                              {[leg.day,
+                                              leg.date,
+                                              leg.equipment,
+                                              leg.flightNumber,
+                                              leg.departureStation,
+                                              leg.departureTime,
+                                              leg.meal,
+                                              leg.arrivalStation,
+                                              leg.arrivalTime,
+                                              leg.blockTime]
+                                                .filter(Boolean)
+                                                .join(" ")}
+                                            </span>
                                           </li>
                                         ))}
                                       </ul>
                                     )}
+                                    {day.releaseLine ? (
+                                      <div className="whitespace-pre-wrap">{day.releaseLine}</div>
+                                    ) : null}
+                                    {day.hotelLayover ? (
+                                      <div className="whitespace-pre-wrap">{day.hotelLayover}</div>
+                                    ) : null}
                                   </li>
                                 ))}
                               </ul>
