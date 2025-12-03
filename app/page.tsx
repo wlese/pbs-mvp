@@ -45,9 +45,32 @@ type ReserveProperty = {
   notes?: string;
 };
 
+type FlightLeg = {
+  raw?: string;
+  day?: string;
+  date?: string;
+  equipment?: string;
+  flightNumber?: string;
+  departureStation?: string;
+  departureTime?: string;
+  meal?: string;
+  arrivalStation?: string;
+  arrivalTime?: string;
+  blockTime?: string;
+  remarks?: string;
+};
+
 type SequenceDutyDay = {
   raw?: string;
-  legs?: string[];
+  rawLines?: string[];
+  reportLine?: string;
+  reportTime?: string;
+  legs?: FlightLeg[];
+  releaseLine?: string;
+  releaseTime?: string;
+  hotelLayover?: string;
+  calendarDay?: string;
+  summary?: string;
 };
 
 type PairingSequence = {
