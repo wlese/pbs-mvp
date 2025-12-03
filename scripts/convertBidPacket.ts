@@ -170,7 +170,11 @@ function buildPageTexts(objects: PdfObject[]): string[] {
       const snippets = extractTextFromContent(decoded);
       pageSnippets.push(...snippets);
     }
-    pageTexts.push(pageSnippets.join('\n'));
+    const pageText = pageSnippets.join('\n');
+    console.log('--- PAGE START ---');
+    console.log(pageText);
+    console.log('--- PAGE END ---');
+    pageTexts.push(pageText);
   }
   return pageTexts;
 }

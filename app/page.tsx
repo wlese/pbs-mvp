@@ -356,6 +356,9 @@ export default function Home() {
   const [sequenceNumbers, setSequenceNumbers] = useState<string[]>([]);
   const [sequencesLoading, setSequencesLoading] = useState(false);
   const [sequencesError, setSequencesError] = useState<string | null>(null);
+  const [debugSequences, setDebugSequences] = useState<any[]>([]);
+  const [debugLoading, setDebugLoading] = useState(false);
+  const [debugError, setDebugError] = useState<string | null>(null);
 
   const inferredYearMonth = inferYearMonth(result);
   const [adminYear, setAdminYear] = useState<number>(inferredYearMonth.year);
@@ -558,6 +561,26 @@ export default function Home() {
       setSequenceNumbers([]);
     } finally {
       setSequencesLoading(false);
+    }
+  }
+
+  async function loadDebugTrips() {
+    try {
+      setDebugLoading(true);
+      setDebugError(null);
+      setDebugSequences([]);
+
+      const res = await fetch("/api/sequences?minDays=1&maxDays=6", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      console.log("Debug API data:", data);
+      setDebugSequences(data.sequences ?? []);
+    } catch (err) {
+      console.error(err);
+      setDebugError("Failed to load sequences");
+    } finally {
+      setDebugLoading(false);
     }
   }
 
@@ -1851,6 +1874,33 @@ export default function Home() {
         )}
         </div>
       </main>
+
+      <section className="mt-8 border-t pt-4 text-sm">
+        <h2 className="font-semibold mb-2">Debug: BOS 737 Trips</h2>
+        <button
+          type="button"
+          onClick={loadDebugTrips}
+          className="mb-2 px-3 py-1 rounded bg-blue-600 text-white"
+        >
+          Load BOS 737 Trips
+        </button>
+
+        {debugLoading && <p>Loading trips…</p>}
+        {debugError && <p className="text-red-600">{debugError}</p>}
+        {!debugLoading && !debugError && (
+          <p>
+            Loaded <strong>{debugSequences.length}</strong> sequence(s).
+          </p>
+        )}
+
+        <ul className="mt-2 max-h-64 overflow-auto space-y-1">
+          {debugSequences.map((seq: any) => (
+            <li key={seq.sequenceNumber} className="border rounded px-2 py-1">
+              SEQ {seq.sequenceNumber} — {seq.dutyDays?.length ?? 0} day(s)
+            </li>
+          ))}
+        </ul>
+      </section>
     </>
   );
 }
