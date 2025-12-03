@@ -278,7 +278,17 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
     finalizeCurrentDay();
   }
 
-  return duties;
+  return duties.map((day) => ({
+    rawLines: day.rawLines,
+    legs: day.legs,
+    reportLine: day.reportLine,
+    reportTime: day.reportTime,
+    calendarDay: day.calendarDay,
+    releaseLine: day.releaseLine,
+    releaseTime: day.releaseTime,
+    hotelLayover: day.hotelLayover,
+    summary: day.summary,
+  }));
 }
 
 function parseSequence(block: string[]): SequenceRecord {
