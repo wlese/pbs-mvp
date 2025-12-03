@@ -30,12 +30,12 @@ interface SequenceDutyDay {
   rawLines: string[];
   reportLine?: string;
   reportTime?: string;
-  legs: FlightLeg[];
+  calendarDay?: string;
   releaseLine?: string;
   releaseTime?: string;
   hotelLayover?: string;
-  calendarDay?: string;
   summary?: string;
+  legs: FlightLeg[];
 }
 
 interface SequenceRecord {
@@ -271,7 +271,6 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
 
     if (current) {
       current.summary = current.summary ? `${current.summary} | ${trimmedLine}` : trimmedLine;
-      current.rawLines.push(trimmedLine);
     }
   }
 

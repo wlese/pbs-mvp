@@ -192,7 +192,6 @@ function parseDutyDays(lines) {
         }
         if (current) {
             current.summary = current.summary ? `${current.summary} | ${trimmedLine}` : trimmedLine;
-            current.rawLines.push(trimmedLine);
         }
     }
     if (current) {
