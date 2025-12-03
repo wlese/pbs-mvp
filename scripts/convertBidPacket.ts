@@ -11,11 +11,31 @@ interface SequencePositionCounts {
   [position: string]: number;
 }
 
-interface SequenceDutyDay {
+interface FlightLeg {
   raw: string;
-  legs: string[];
+  day?: string;
+  date?: string;
+  equipment?: string;
+  flightNumber?: string;
+  departureStation?: string;
+  departureTime?: string;
+  meal?: string;
+  arrivalStation?: string;
+  arrivalTime?: string;
+  blockTime?: string;
+  remarks?: string;
+}
+
+interface SequenceDutyDay {
+  rawLines: string[];
+  reportLine?: string;
+  reportTime?: string;
+  legs: FlightLeg[];
+  releaseLine?: string;
+  releaseTime?: string;
   hotelLayover?: string;
   calendarDay?: string;
+  summary?: string;
 }
 
 interface SequenceRecord {
@@ -118,19 +138,147 @@ function parseTotals(line: string): SequenceTotals | undefined {
   return Object.keys(totals).length ? totals : undefined;
 }
 
+function parseReport(line: string): { reportLine: string; reportTime?: string } {
+  const match = /RPT\s+([0-9]{3,4}\/[0-9]{3,4})/.exec(line);
+  return { reportLine: line, reportTime: match ? match[1] : undefined };
+}
+
+function parseRelease(line: string): { releaseLine: string; releaseTime?: string } {
+  const match = /RLS\s+([0-9]{3,4}\/[0-9]{3,4})/.exec(line);
+  return { releaseLine: line, releaseTime: match ? match[1] : undefined };
+}
+
+function parseFlightLeg(line: string): FlightLeg {
+  const tokens = line.split(/\s+/).filter(Boolean);
+  const leg: FlightLeg = { raw: line };
+  let idx = 0;
+
+  if (tokens[idx]) leg.day = tokens[idx++];
+  if (tokens[idx]) leg.date = tokens[idx++];
+  if (tokens[idx]) leg.equipment = tokens[idx++];
+  if (tokens[idx]) leg.flightNumber = tokens[idx++];
+  if (tokens[idx]) leg.departureStation = tokens[idx++];
+  if (tokens[idx]) leg.departureTime = tokens[idx++];
+
+  if (tokens[idx] && /^[A-Z]$/.test(tokens[idx])) {
+    leg.meal = tokens[idx];
+    idx += 1;
+  }
+
+  if (tokens[idx]) leg.arrivalStation = tokens[idx++];
+  if (tokens[idx]) leg.arrivalTime = tokens[idx++];
+
+  if (tokens[idx] && /^\d+(?:\.\d+)?/.test(tokens[idx])) {
+    leg.blockTime = tokens[idx];
+    idx += 1;
+  }
+
+  if (tokens[idx]) {
+    leg.remarks = tokens.slice(idx).join(' ');
+  }
+
+  return leg;
+}
+
+function isLegLine(line: string): boolean {
+  return /^\d+\s+\d+\/\d+\s+\d+\s+\d+/.test(line);
+}
+
+function isHotelLine(line: string): boolean {
+  return /HOTEL/i.test(line);
+}
+
 function parseDutyDays(lines: string[]): SequenceDutyDay[] {
   const duties: SequenceDutyDay[] = [];
+  let current: SequenceDutyDay | null = null;
+  let currentDayNumber: string | null = null;
+
+  const startNewDutyDay = () => {
+    current = { rawLines: [], legs: [] };
+    currentDayNumber = null;
+  };
+
+  const finalizeCurrentDay = () => {
+    if (current) {
+      duties.push(current);
+      current = null;
+      currentDayNumber = null;
+    }
+  };
+
   for (const line of lines) {
-    const legs = line.split(/\s{2,}/).filter(Boolean);
-    const hotelMatch = /HLT\s*([A-Z]{3})/i.exec(line);
-    const calendarMatch = /\b([0-9]{1,2})\b/.exec(line);
-    duties.push({
-      raw: line,
-      legs,
-      hotelLayover: hotelMatch ? hotelMatch[1].toUpperCase() : undefined,
-      calendarDay: calendarMatch ? calendarMatch[1] : undefined,
-    });
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine) {
+      continue;
+    }
+
+    if (/^RPT\b/.test(trimmedLine)) {
+      if (!current) {
+        startNewDutyDay();
+      } else if (current.reportLine) {
+        finalizeCurrentDay();
+        startNewDutyDay();
+      }
+
+      const report = parseReport(trimmedLine);
+      current.reportLine = report.reportLine;
+      current.reportTime = report.reportTime;
+      current.rawLines.push(trimmedLine);
+      continue;
+    }
+
+    const legMatch = isLegLine(trimmedLine) ? /^(\d+)/.exec(trimmedLine) : null;
+    if (legMatch) {
+      const legDay = legMatch[1];
+
+      if (!current) {
+        startNewDutyDay();
+      } else if (currentDayNumber && legDay !== currentDayNumber) {
+        finalizeCurrentDay();
+        startNewDutyDay();
+      }
+
+      currentDayNumber = currentDayNumber || legDay;
+      const leg = parseFlightLeg(trimmedLine);
+      current.legs.push(leg);
+      if (!current.calendarDay && leg.date) {
+        current.calendarDay = leg.date;
+      }
+      current.rawLines.push(trimmedLine);
+      continue;
+    }
+
+    if (/^RLS\b/.test(trimmedLine)) {
+      if (!current) {
+        startNewDutyDay();
+      }
+      const release = parseRelease(trimmedLine);
+      current.releaseLine = release.releaseLine;
+      current.releaseTime = release.releaseTime;
+      current.rawLines.push(trimmedLine);
+      continue;
+    }
+
+    if (isHotelLine(trimmedLine)) {
+      if (!current) {
+        startNewDutyDay();
+      }
+      current.hotelLayover = trimmedLine;
+      current.rawLines.push(trimmedLine);
+      continue;
+    }
+
+    if (current) {
+      current.summary = current.summary ? `${current.summary} | ${trimmedLine}` : trimmedLine;
+      current.rawLines.push(trimmedLine);
+    }
   }
+
+  if (current) {
+    finalizeCurrentDay();
+  }
+
   return duties;
 }
 
@@ -246,6 +394,24 @@ function main(): void {
       sequences.push(parseSequence(block));
     }
   }
+
+  // eslint-disable-next-line no-console
+  console.log(
+    'Sample duty day grouping:',
+    JSON.stringify(
+      sequences.slice(0, 3).map((sequence) => ({
+        sequence: sequence.sequenceNumber,
+        dutyDays: sequence.dutyDays.map((day) => ({
+          report: day.reportTime || day.reportLine,
+          legs: day.legs.length,
+          release: day.releaseTime || day.releaseLine,
+          hotel: day.hotelLayover,
+        })),
+      })),
+      null,
+      2,
+    ),
+  );
 
   const output: BidPacketJson = {
     base,
