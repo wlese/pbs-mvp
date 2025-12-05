@@ -1,4 +1,16 @@
-import pdfParse from "pdf-parse";
+type PdfParseFn = typeof import("pdf-parse") extends { default: infer T }
+  ? T
+  : typeof import("pdf-parse");
+
+let cachedPdfParse: PdfParseFn | null = null;
+
+async function loadPdfParse() {
+  if (!cachedPdfParse) {
+    const mod = await import("pdf-parse");
+    cachedPdfParse = (mod as { default?: PdfParseFn }).default ?? (mod as PdfParseFn);
+  }
+  return cachedPdfParse;
+}
 
 export type UploadedBidPacket = {
   metadata: {
@@ -561,6 +573,7 @@ function buildDisplayRange(monthIndex: number, year: number) {
 }
 
 export async function parseBidPdf(buffer: Buffer, fileName: string): Promise<UploadedBidPacket> {
+  const pdfParse = await loadPdfParse();
   const pdf = await pdfParse(buffer);
   const rawText = pdf.text || "";
   const pages = splitIntoPages(rawText);
