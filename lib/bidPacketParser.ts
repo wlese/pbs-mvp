@@ -284,9 +284,10 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
   let current: SequenceDutyDay | null = null;
   let currentDayNumber: string | null = null;
 
-  const startNewDutyDay = () => {
+  const startNewDutyDay = (): SequenceDutyDay => {
     current = { rawLines: [], legs: [] };
     currentDayNumber = null;
+    return current;
   };
 
   const finalizeCurrentDay = () => {
@@ -312,10 +313,11 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
         startNewDutyDay();
       }
 
+      const duty = current ?? startNewDutyDay();
       const report = parseReport(trimmedLine);
-      current.reportLine = report.reportLine;
-      current.reportTime = report.reportTime;
-      current.rawLines.push(trimmedLine);
+      duty.reportLine = report.reportLine;
+      duty.reportTime = report.reportTime;
+      duty.rawLines.push(trimmedLine);
       continue;
     }
 
@@ -330,33 +332,30 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
         startNewDutyDay();
       }
 
+      const duty = current ?? startNewDutyDay();
       currentDayNumber = currentDayNumber || legDay;
       const leg = parseFlightLeg(trimmedLine);
-      current.legs.push(leg);
-      if (!current.calendarDay && leg.date) {
-        current.calendarDay = leg.date;
+      duty.legs.push(leg);
+      if (!duty.calendarDay && leg.date) {
+        duty.calendarDay = leg.date;
       }
-      current.rawLines.push(trimmedLine);
+      duty.rawLines.push(trimmedLine);
       continue;
     }
 
     if (/^RLS\b/.test(trimmedLine)) {
-      if (!current) {
-        startNewDutyDay();
-      }
+      const duty = current ?? startNewDutyDay();
       const release = parseRelease(trimmedLine);
-      current.releaseLine = release.releaseLine;
-      current.releaseTime = release.releaseTime;
-      current.rawLines.push(trimmedLine);
+      duty.releaseLine = release.releaseLine;
+      duty.releaseTime = release.releaseTime;
+      duty.rawLines.push(trimmedLine);
       continue;
     }
 
     if (isHotelLine(trimmedLine)) {
-      if (!current) {
-        startNewDutyDay();
-      }
-      current.hotelLayover = trimmedLine;
-      current.rawLines.push(trimmedLine);
+      const duty = current ?? startNewDutyDay();
+      duty.hotelLayover = trimmedLine;
+      duty.rawLines.push(trimmedLine);
       continue;
     }
 
