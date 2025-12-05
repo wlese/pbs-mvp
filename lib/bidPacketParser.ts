@@ -1,13 +1,17 @@
-type PdfParseFn = typeof import("pdf-parse") extends { default: infer T }
-  ? T
-  : typeof import("pdf-parse");
+import type { PDFParseOptions, PDFParseResult } from "pdf-parse";
+
+type PdfParseFn = (
+  data: Buffer | Uint8Array | ArrayBuffer | string,
+  options?: PDFParseOptions,
+) => Promise<PDFParseResult>;
 
 let cachedPdfParse: PdfParseFn | null = null;
 
 async function loadPdfParse() {
   if (!cachedPdfParse) {
     const mod = await import("pdf-parse");
-    cachedPdfParse = (mod as { default?: PdfParseFn }).default ?? (mod as PdfParseFn);
+    cachedPdfParse =
+      (mod as { default?: PdfParseFn }).default ?? ((mod as unknown) as PdfParseFn);
   }
   return cachedPdfParse;
 }
