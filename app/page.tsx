@@ -80,6 +80,66 @@ type PairingSequence = {
   dutyDays?: SequenceDutyDay[];
 };
 
+type UploadedBidPacket = {
+  metadata: {
+    base: string;
+    fleet: string;
+    month: string;
+    year: number;
+    bid_period_start: string;
+    bid_period_end: string;
+    source_document: string;
+  };
+  sequences: UploadedSequence[];
+};
+
+type UploadedSequence = {
+  sequence_number: number;
+  position: string;
+  length_days: number;
+  spanish_operation: boolean;
+  notes: string | null;
+  calendar: {
+    start_dates: string[];
+    display_range_start: string;
+    display_range_end: string;
+  };
+  totals: {
+    block_time: string | null;
+    credit_time: string | null;
+    tafb: string | null;
+  };
+  duties: UploadedDuty[];
+};
+
+type UploadedDuty = {
+  duty_index: number;
+  report_local: string | null;
+  release_local: string | null;
+  legs: UploadedLeg[];
+  layover: {
+    station: string | null;
+    hotel_name: string | null;
+    hotel_phone: string | null;
+    transport_name: string | null;
+    transport_phone: string | null;
+    ground_rest: string | null;
+  } | null;
+};
+
+type UploadedLeg = {
+  leg_index: number;
+  equip_code: string | null;
+  flight_number: string | null;
+  dep_station: string | null;
+  arr_station: string | null;
+  dep_local: string | null;
+  arr_local: string | null;
+  block_time: string | null;
+  ground_time: string | null;
+  meal: string | null;
+};
+
 type PbsResult = {
   summary?: string;
   daysOffProperties?: DaysOffProperty[];
@@ -394,6 +454,9 @@ export default function Home() {
   const [debugSequences, setDebugSequences] = useState<PairingSequence[]>([]);
   const [debugLoading, setDebugLoading] = useState(false);
   const [debugError, setDebugError] = useState<string | null>(null);
+  const [uploadedPacket, setUploadedPacket] = useState<UploadedBidPacket | null>(null);
+  const [uploadingPacket, setUploadingPacket] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const inferredYearMonth = inferYearMonth(result);
   const [adminYear, setAdminYear] = useState<number>(inferredYearMonth.year);
@@ -585,6 +648,52 @@ export default function Home() {
     } finally {
       setSequencesLoading(false);
     }
+  }
+
+  async function handleUploadBidPdf(file: File | null) {
+    if (!file) return;
+
+    setUploadingPacket(true);
+    setUploadError(null);
+    setUploadedPacket(null);
+
+    try {
+      const body = new FormData();
+      body.append("file", file);
+
+      const res = await fetch("/api/admin/upload-bid", {
+        method: "POST",
+        body,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to convert PDF");
+      }
+
+      setUploadedPacket(data as UploadedBidPacket);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unable to convert PDF";
+      setUploadError(message);
+    } finally {
+      setUploadingPacket(false);
+    }
+  }
+
+  function handleDownloadUploadedPacket() {
+    if (!uploadedPacket) return;
+
+    const filename = `${uploadedPacket.metadata.base}_${uploadedPacket.metadata.fleet}_${uploadedPacket.metadata.month}${uploadedPacket.metadata.year}.json`;
+    const blob = new Blob([JSON.stringify(uploadedPacket, null, 2)], {
+      type: "application/json",
+    });
+    const href = URL.createObjectURL(blob);
+
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(href);
   }
 
   async function loadDebugTrips() {
@@ -941,6 +1050,93 @@ export default function Home() {
                     Auto-synced
                   </div>
                 </div>
+              </div>
+
+              <div className="bg-white border border-[#dbe4f2] rounded-2xl p-4 space-y-3 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-[#6b7a90] font-semibold">
+                      Bid packet upload
+                    </div>
+                    <p className="text-sm text-[#4a4a4a]">
+                      Upload a bid packet PDF and convert every sequence into the normalized JSON format.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 rounded-md bg-[#23426d] px-3 py-2 text-white text-sm font-semibold shadow hover:bg-[#1b3556] cursor-pointer disabled:opacity-60">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) => handleUploadBidPdf(e.target.files?.[0] ?? null)}
+                      disabled={uploadingPacket}
+                    />
+                    {uploadingPacket ? "Processing…" : "Upload PDF"}
+                  </label>
+                </div>
+
+                {uploadError && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                    {uploadError}
+                  </div>
+                )}
+
+                {uploadingPacket && (
+                  <div className="text-sm text-[#4a4a4a] bg-[#eef3ff] border border-[#d1defa] rounded-md px-3 py-2">
+                    Reading PDF and extracting sequences…
+                  </div>
+                )}
+
+                {uploadedPacket && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="text-sm text-[#2f4058]">
+                        <div className="font-semibold text-[#23426d]">
+                          {uploadedPacket.metadata.base} {uploadedPacket.metadata.fleet} • {uploadedPacket.metadata.month} {uploadedPacket.metadata.year}
+                        </div>
+                        <div className="text-[13px] text-[#4a4a4a]">
+                          {uploadedPacket.sequences.length} sequences • bid period {uploadedPacket.metadata.bid_period_start} → {uploadedPacket.metadata.bid_period_end}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[#6b7280]">{uploadedPacket.metadata.source_document}</span>
+                        <button
+                          type="button"
+                          onClick={handleDownloadUploadedPacket}
+                          className="inline-flex items-center gap-2 rounded-md bg-[#4a90e2] px-3 py-1 text-white text-sm font-semibold shadow hover:bg-[#3a7bc6]"
+                        >
+                          Download JSON
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto space-y-2 pr-1 text-xs text-[#2f4058]">
+                      {uploadedPacket.sequences.slice(0, 5).map((seq) => (
+                        <div
+                          key={seq.sequence_number}
+                          className="border border-[#dbe4f2] rounded-lg bg-[#f9fbff] p-2 space-y-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-[#23426d]">
+                              Sequence {seq.sequence_number} • {seq.position || "Unknown"}
+                            </div>
+                            <div className="text-[11px] text-[#4a4a4a]">
+                              {seq.length_days} days • {seq.duties.length} duties
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-[#4a4a4a]">
+                            Block {seq.totals.block_time ?? "–"} | Credit {seq.totals.credit_time ?? "–"} | TAFB {seq.totals.tafb ?? "–"}
+                          </div>
+                          {seq.calendar.start_dates.length > 0 ? (
+                            <div className="text-[11px] text-[#4a4a4a]">
+                              Starts: {seq.calendar.start_dates.join(", ")}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="bg-white border border-[#dbe4f2] rounded-2xl p-4 space-y-3 shadow-sm">
