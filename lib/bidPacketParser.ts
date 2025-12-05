@@ -301,7 +301,7 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
     if (/^RPT\b/.test(trimmedLine)) {
       if (!current) {
         startNewDutyDay();
-      } else if (current.reportLine) {
+      } else if (current && current.reportLine) {
         finalizeCurrentDay();
         startNewDutyDay();
       }
