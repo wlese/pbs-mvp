@@ -359,11 +359,9 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
       continue;
     }
 
-    if (current) {
-      current.summary = current.summary
-        ? `${current.summary} | ${trimmedLine}`
-        : trimmedLine;
-    }
+    const duty = current ?? startNewDutyDay();
+    duty.summary = duty.summary ? `${duty.summary} | ${trimmedLine}` : trimmedLine;
+    duty.rawLines.push(trimmedLine);
   }
 
   if (current) {
