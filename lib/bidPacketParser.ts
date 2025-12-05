@@ -107,6 +107,12 @@ type SequenceDutyDay = {
   legs: FlightLeg[];
 };
 
+function hasReportLine(
+  duty: SequenceDutyDay | null,
+): duty is SequenceDutyDay & { reportLine: string } {
+  return Boolean(duty?.reportLine);
+}
+
 type SequenceRecord = {
   sequenceNumber: string;
   instancesInMonth?: number;
@@ -301,7 +307,7 @@ function parseDutyDays(lines: string[]): SequenceDutyDay[] {
     if (/^RPT\b/.test(trimmedLine)) {
       if (!current) {
         startNewDutyDay();
-      } else if (current && current.reportLine) {
+      } else if (hasReportLine(current)) {
         finalizeCurrentDay();
         startNewDutyDay();
       }
