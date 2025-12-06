@@ -431,10 +431,6 @@ function dayKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function deriveBidMonthDays(year: number, month: number) {
-  return getBidMonthLength(year, month);
-}
-
 // ---------- Component ----------
 
 export default function Home() {
@@ -730,16 +726,24 @@ export default function Home() {
     }
   }
 
+  // Legacy compatibility: derive bid month day count from the hard-coded
+  // bid month definitions. This replaces the removed 30/31-day selector
+  // while keeping the old helper name available for any lingering callers.
+  function deriveBidMonthDays(year: number, month: number) {
+    return getBidMonthLength(year, month);
+  }
+
   function handleAdminMonthChange(value: number) {
     setAdminDaysInMonth(deriveBidMonthDays(adminYear, value));
     setAdminMonth(value);
     setAdminTouched(true);
   }
 
-  // Legacy alias retained to prevent build-time failures while the
-  // removed day-count selector code finishes propagating.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const setAdminDaysInMonth = handleAdminMonthChange;
+  const setAdminDaysInMonth = (value: number) => {
+    const derived = deriveBidMonthDays(adminYear, value);
+    handleAdminMonthChange(value);
+    return derived;
+  };
 
   function handleAdminYearChange(value: number) {
     setAdminYear(value);
@@ -832,21 +836,12 @@ export default function Home() {
   const displayYear = adminYear;
   const displayMonth = adminMonth;
   const monthLabel = `${BID_MONTHS[displayMonth]} ${displayYear}`;
-  const baseBidMonthRange = getBidMonthRange(displayYear, displayMonth);
-  const bidMonthDates = buildBidMonthDates(
-    displayYear,
-    displayMonth,
-    adminDaysInMonth,
-  );
-  const adjustedRange = {
-    start: baseBidMonthRange.start,
-    end: (() => {
-      const end = new Date(baseBidMonthRange.start);
-      end.setDate(baseBidMonthRange.start.getDate() + adminDaysInMonth - 1);
-      return end;
-    })(),
-  };
-  const calendarDays = buildCalendar(adjustedRange);
+  const bidMonthRange = getBidMonthRange(displayYear, displayMonth);
+  const bidMonthDates = buildBidMonthDates(displayYear, displayMonth);
+  // Legacy compatibility for code paths that referenced the removed day-count selector
+  const adminDaysInMonth = deriveBidMonthDays(displayYear, displayMonth);
+  const bidMonthLength = adminDaysInMonth;
+  const calendarDays = buildCalendar(bidMonthRange);
   const dayGridStyle = {
     gridTemplateColumns: `repeat(${bidMonthDates.length}, minmax(0, 1fr))`,
   };
