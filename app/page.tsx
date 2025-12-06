@@ -1193,88 +1193,130 @@ export default function Home() {
                         return (
                           <div
                             key={`${sequenceNumber}-${idx}`}
-                            className="border border-[#dbe4f2] rounded-xl bg-[#f9fbff] p-3 space-y-2 shadow-sm"
+                            className="rounded-2xl border border-[#dbe4f2] bg-white p-4 shadow-[0_8px_20px_rgba(27,63,119,0.08)]"
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="text-sm font-semibold text-[#23426d]">
-                                Pairing {sequenceNumber}
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7eef9] pb-3">
+                              <div className="space-y-1">
+                                <div className="text-[11px] uppercase tracking-[0.14em] text-[#6b7a90]">Pairing</div>
+                                <div className="text-lg font-bold text-[#23426d]">#{sequenceNumber}</div>
                               </div>
-                              <div className="text-[11px] text-[#4a4a4a] text-right leading-4">
-                                {instances ? <div>{instances}× in month</div> : null}
-                                {credit ? <div className="font-semibold">{credit} credit</div> : null}
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#23426d]">
+                                <span className="rounded-full bg-[#eef3ff] px-3 py-1 text-[#23426d] shadow-inner">
+                                  {`${dutyDays.length || 0} Duty ${dutyDays.length === 1 ? "Day" : "Days"}`}
+                                </span>
+                                {credit ? (
+                                  <span className="rounded-full bg-[#e7f6ef] px-3 py-1 text-[#1f7a4a] shadow-inner">
+                                    {credit} credit
+                                  </span>
+                                ) : null}
+                                {instances ? (
+                                  <span className="rounded-full bg-[#fff4e5] px-3 py-1 text-[#a25b00] shadow-inner">
+                                    {instances}× in month
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
 
                             {dutyDays.length > 0 ? (
-                              <ul className="space-y-1 text-xs text-[#2f4058]">
+                              <ul className="mt-3 space-y-3 text-xs text-[#2f4058]">
                                 {dutyDays.map((day, dayIdx) => {
                                   const layoverDetails = parseLayoverDetails(day.hotelLayover);
+                                  const expectLayover = dutyDays.length > 1 && dayIdx < dutyDays.length - 1;
 
                                   return (
                                     <Fragment key={`${sequenceNumber}-day-wrapper-${dayIdx}`}>
-                                      <li
-                                        className="rounded-md border border-[#d6e3f5] bg-white px-2 py-1"
-                                      >
-                                        <div className="font-semibold text-[#23426d]">Duty Day {dayIdx + 1}</div>
-                                        {day.reportLine ? (
-                                          <div className="whitespace-pre-wrap">{day.reportLine}</div>
-                                        ) : null}
+                                      <li className="rounded-xl border border-[#e2eaf7] bg-[#f7f9fd] px-3 py-2 shadow-inner">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex items-center gap-2">
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e7eef9] text-[11px] font-semibold text-[#23426d]">
+                                              {dayIdx + 1}
+                                            </div>
+                                            <div className="space-y-1">
+                                              <div className="font-semibold text-[#23426d]">Duty Day {dayIdx + 1}</div>
+                                              {day.summary ? (
+                                                <div className="text-[#4a5a73]">{day.summary}</div>
+                                              ) : null}
+                                              {day.reportLine ? (
+                                                <div className="text-[#4a4a4a] whitespace-pre-wrap">{day.reportLine}</div>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                          <div className="text-right text-[11px] text-[#4a5a73] leading-4">
+                                            {day.reportTime ? <div>Report: {day.reportTime}</div> : null}
+                                            {day.releaseTime ? <div>Release: {day.releaseTime}</div> : null}
+                                          </div>
+                                        </div>
+
                                         {Array.isArray(day.legs) && day.legs.length > 0 && (
-                                          <ul className="mt-1 space-y-[2px] text-[11px] text-[#3d4c66]">
-                                            {day.legs.map((leg, legIdx) => (
-                                              <li
-                                                key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`}
-                                                className="flex gap-1"
-                                              >
-                                                <span className="text-[10px] uppercase tracking-[0.1em] text-[#8a9ab5] font-semibold">
-                                                  LEG {legIdx + 1}:
-                                                </span>
-                                                <span className="break-words">
-                                                  {[leg.day,
-                                                  leg.date,
-                                                  leg.equipment,
-                                                  leg.flightNumber,
-                                                  leg.departureStation,
-                                                  leg.departureTime,
-                                                  leg.meal,
-                                                  leg.arrivalStation,
-                                                  leg.arrivalTime,
-                                                  leg.blockTime]
-                                                    .filter(Boolean)
-                                                    .join(" ")}
-                                                </span>
-                                              </li>
-                                            ))}
-                                          </ul>
+                                          <div className="mt-2 flex flex-col gap-2">
+                                            {day.legs.map((leg, legIdx) => {
+                                              const stations =
+                                                leg.departureStation && leg.arrivalStation
+                                                  ? `${leg.departureStation} → ${leg.arrivalStation}`
+                                                  : leg.departureStation || leg.arrivalStation;
+                                              const times =
+                                                leg.departureTime && leg.arrivalTime
+                                                  ? `${leg.departureTime} – ${leg.arrivalTime}`
+                                                  : leg.departureTime || leg.arrivalTime;
+                                              const meta = [
+                                                leg.equipment,
+                                                leg.flightNumber ? `#${leg.flightNumber}` : null,
+                                                leg.blockTime ? `${leg.blockTime} BLK` : null,
+                                                leg.meal ? `${leg.meal} meal` : null,
+                                              ]
+                                                .filter(Boolean)
+                                                .join(" · ");
+
+                                              return (
+                                                <div
+                                                  key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`}
+                                                  className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dbe4f2] bg-white px-2 py-1 shadow-sm"
+                                                >
+                                                  <span className="rounded-full bg-[#e7eef9] px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4a90e2]">
+                                                    Leg {legIdx + 1}
+                                                  </span>
+                                                  <div className="flex flex-col gap-[2px] text-[11px] text-[#2f4058]">
+                                                    {stations ? <div className="font-semibold">{stations}</div> : null}
+                                                    {times ? <div className="text-[#4a5a73]">{times}</div> : null}
+                                                    {meta ? <div className="text-[#6b7a90]">{meta}</div> : null}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
                                         )}
+
                                         {day.releaseLine ? (
-                                          <div className="whitespace-pre-wrap">{day.releaseLine}</div>
+                                          <div className="mt-2 rounded-lg bg-white px-2 py-1 text-[11px] text-[#4a4a4a] shadow-sm">
+                                            {day.releaseLine}
+                                          </div>
                                         ) : null}
                                       </li>
 
                                       {layoverDetails ? (
-                                        <li
-                                          className="flex items-start gap-2 rounded-md border border-dashed border-[#d6e3f5] bg-[#f5f8ff] px-2 py-1"
-                                        >
-                                          <span className="text-[10px] uppercase tracking-[0.1em] text-[#8a9ab5] font-semibold">
+                                        <li className="flex items-start gap-2 rounded-xl border border-dashed border-[#d6e3f5] bg-[#f0f5ff] px-3 py-2 shadow-inner">
+                                          <span className="rounded-md bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#23426d] shadow-sm">
                                             Layover
                                           </span>
                                           <div className="flex-1 space-y-[2px] text-[11px] text-[#3d4c66]">
-                                            <div className="font-semibold text-[#23426d]">
-                                              {layoverDetails.station}
-                                            </div>
-                                            <div className="whitespace-pre-wrap">{layoverDetails.hotelName}</div>
+                                            <div className="font-semibold text-[#23426d]">{layoverDetails.station}</div>
+                                            <div className="whitespace-pre-wrap text-[#2f4058]">{layoverDetails.hotelName}</div>
                                             {layoverDetails.layoverClock ? (
-                                              <div className="text-[#4a4a4a]">
-                                                Layover time: {layoverDetails.layoverClock}
-                                              </div>
+                                              <div className="text-[#4a4a4a]">Layover time: {layoverDetails.layoverClock}</div>
                                             ) : null}
                                           </div>
                                         </li>
+                                      ) : expectLayover ? (
+                                        <li className="flex items-center gap-2 rounded-xl border border-dashed border-[#f2b8b5] bg-[#fff5f5] px-3 py-2 text-[11px] text-[#a2342d] shadow-inner">
+                                          <span className="rounded-md bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a2342d] shadow-sm">
+                                            Overnight
+                                          </span>
+                                          <div className="font-semibold">Overnight Information Missing</div>
+                                        </li>
                                       ) : null}
-                                      </Fragment>
-                                    );
-                                  })}
+                                    </Fragment>
+                                  );
+                                })}
                               </ul>
                             ) : (
                               <div className="text-xs text-[#6b7280]">No duty day details available.</div>
