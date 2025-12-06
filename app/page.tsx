@@ -1431,7 +1431,7 @@ export default function Home() {
 
                                 return (
                                   <div
-                                    key={day}
+                                    key={iso}
                                     className={`${baseCell} ${colorClass}`}
                                     aria-hidden
                                   />
