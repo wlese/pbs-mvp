@@ -184,6 +184,76 @@ function parseLayoverDetails(raw?: string) {
   };
 }
 
+function formatClockLabel(raw?: string | null) {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 3 || digits.length > 4) return raw;
+  const padded = digits.padStart(4, "0");
+  return `${padded.slice(0, 2)}:${padded.slice(2)}`;
+}
+
+function formatDualClock(raw?: string | null) {
+  if (!raw) return null;
+  const parts = raw.split("/").filter(Boolean);
+  const formatted = parts
+    .map((part) => formatClockLabel(part))
+    .filter(Boolean)
+    .join(" / ");
+
+  return formatted || raw;
+}
+
+function formatBlockTime(block?: string | null) {
+  if (!block) return null;
+  const trimmed = block.trim();
+
+  const hhmmMatch = trimmed.match(/^(\d+)\.(\d{2})$/);
+  if (hhmmMatch) {
+    const [, hours, minutes] = hhmmMatch;
+    return `${Number(hours)}h ${minutes}m`;
+  }
+
+  const decimalClock = decimalHoursToClock(trimmed);
+  if (decimalClock) {
+    const [hours, minutes] = decimalClock.split(":");
+    return `${Number(hours)}h ${minutes}m`;
+  }
+
+  return trimmed;
+}
+
+function parseTimeToMinutes(raw?: string | null) {
+  if (!raw) return null;
+  const firstPortion = raw.split("/")[0] ?? raw;
+  const digits = firstPortion.replace(/\D/g, "");
+  if (digits.length < 3 || digits.length > 4) return null;
+  const padded = digits.padStart(4, "0");
+  const hours = Number(padded.slice(0, 2));
+  const minutes = Number(padded.slice(2));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function computeSitMinutes(previousArrival?: string | null, nextDeparture?: string | null) {
+  const arrivalMinutes = parseTimeToMinutes(previousArrival);
+  const departureMinutes = parseTimeToMinutes(nextDeparture);
+  if (arrivalMinutes === null || departureMinutes === null) return null;
+
+  let diff = departureMinutes - arrivalMinutes;
+  if (diff < 0) diff += 24 * 60;
+
+  return diff;
+}
+
+function formatMinutesLabel(value: number | null) {
+  if (value === null || Number.isNaN(value)) return null;
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+
+  if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+  return `${minutes}m`;
+}
+
 function parseCalendarDayToDate(
   calendarDay: string | undefined,
   displayYear: number,
@@ -1344,20 +1414,19 @@ export default function Home() {
                                     {miniMonthCells.map((cell, cellIdx) => {
                                       const iso = dayKey(cell.date);
                                       const isStart = startDateSet.has(iso);
+                                      const displayDay = isStart ? cell.date.getDate() : "";
                                       return (
                                         <div
                                           key={`${sequenceNumber}-cell-${cellIdx}`}
-                                          className={`flex h-8 items-center justify-center rounded-lg border text-[12px] font-semibold ${
+                                          className={`flex h-8 items-center justify-center rounded-lg border text-[12px] font-semibold transition-shadow ${
                                             isStart
-                                              ? "border-[#4a90e2] bg-white text-[#23426d] shadow-sm ring-1 ring-[#4a90e2]"
-                                              : "border-transparent"
-                                          } ${
-                                            cell.inRange
-                                              ? "bg-[#eef3ff] text-[#23426d]"
-                                              : "bg-[#f3f4f6] text-[#9aa0ad]"
-                                          }`}
-                                        >
-                                          {cell.date.getDate()}
+                                              ? "border-[#4a90e2] bg-gradient-to-b from-[#7eb4eb] to-[#4a90e2] text-white shadow-md"
+                                              : cell.inRange
+                                              ? "bg-[#eef3ff] text-transparent"
+                                              : "bg-[#f3f4f6] text-transparent"
+                                          } ${isStart ? "ring-1 ring-[#2f63a3]" : "border-transparent"}`}
+                                          >
+                                          {displayDay}
                                         </div>
                                       );
                                     })}
@@ -1399,6 +1468,8 @@ export default function Home() {
                                     expandedLayovers[layoverKey]
                                   );
                                   const calendarLabel = day.calendarDay || day.day;
+                                  const formattedReport = formatDualClock(day.reportTime);
+                                  const formattedRelease = formatDualClock(day.releaseTime);
 
                                   return (
                                     <Fragment key={`${sequenceNumber}-day-wrapper-${dayIdx}`}>
@@ -1413,9 +1484,10 @@ export default function Home() {
                                                 <div className="text-[10px] uppercase tracking-[0.14em] text-[#6b7a90]">
                                                   Duty Day {dayIdx + 1}
                                                 </div>
-                                                {day.reportTime ? (
-                                                  <span className="rounded-full bg-white px-2 py-[2px] text-[10px] font-semibold text-[#23426d] shadow-inner">
-                                                    Report {day.reportTime}
+                                                {formattedReport ? (
+                                                  <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-[4px] text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1f4b99] shadow-inner ring-1 ring-[#b8c8ec]">
+                                                    <span className="text-[10px] font-bold">Report</span>
+                                                    <span className="text-[12px] font-black leading-[14px]">{formattedReport}</span>
                                                   </span>
                                                 ) : null}
                                               </div>
@@ -1428,7 +1500,12 @@ export default function Home() {
                                             </div>
                                           </div>
                                           <div className="text-right text-[11px] text-[#4a5a73] leading-4">
-                                            {day.releaseTime ? <div>Release: {day.releaseTime}</div> : null}
+                                            {formattedRelease ? (
+                                              <div className="inline-flex items-center gap-1 rounded-full bg-[#e8f0ff] px-3 py-[4px] text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1f4b99] shadow-inner ring-1 ring-[#bed2ff]">
+                                                <span className="text-[10px] font-bold">Release</span>
+                                                <span className="text-[12px] font-black leading-[14px]">{formattedRelease}</span>
+                                              </div>
+                                            ) : null}
                                           </div>
                                         </div>
 
@@ -1439,33 +1516,58 @@ export default function Home() {
                                                 leg.departureStation && leg.arrivalStation
                                                   ? `${leg.departureStation} → ${leg.arrivalStation}`
                                                   : leg.departureStation || leg.arrivalStation;
+                                              const departureClock = formatDualClock(leg.departureTime);
+                                              const arrivalClock = formatDualClock(leg.arrivalTime);
                                               const times =
-                                                leg.departureTime && leg.arrivalTime
-                                                  ? `${leg.departureTime} – ${leg.arrivalTime}`
-                                                  : leg.departureTime || leg.arrivalTime;
+                                                departureClock && arrivalClock
+                                                  ? `${departureClock} – ${arrivalClock}`
+                                                  : departureClock || arrivalClock || leg.departureTime || leg.arrivalTime;
+                                              const blockLabel = formatBlockTime(leg.blockTime);
                                               const meta = [
                                                 leg.equipment,
                                                 leg.flightNumber ? `#${leg.flightNumber}` : null,
-                                                leg.blockTime ? `${leg.blockTime} BLK` : null,
                                                 leg.meal ? `${leg.meal} meal` : null,
                                               ]
                                                 .filter(Boolean)
                                                 .join(" · ");
+                                              const sitLabel = formatMinutesLabel(
+                                                computeSitMinutes(
+                                                  day.legs?.[legIdx - 1]?.arrivalTime,
+                                                  leg.departureTime,
+                                                ),
+                                              );
 
                                               return (
-                                                <div
-                                                  key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`}
-                                                  className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dbe4f2] bg-white px-2 py-1 shadow-sm"
-                                                >
-                                                  <span className="rounded-full bg-[#e7eef9] px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4a90e2]">
-                                                    Leg {legIdx + 1}
-                                                  </span>
-                                                  <div className="flex flex-col gap-[2px] text-[11px] text-[#2f4058]">
-                                                    {stations ? <div className="font-semibold">{stations}</div> : null}
-                                                    {times ? <div className="text-[#4a5a73]">{times}</div> : null}
-                                                    {meta ? <div className="text-[#6b7a90]">{meta}</div> : null}
+                                                <Fragment key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`}>
+                                                  {legIdx > 0 && sitLabel ? (
+                                                    <div className="flex items-center gap-2 px-1 text-[11px] font-semibold text-[#a25b00]">
+                                                      <div className="h-[1px] flex-1 border-t border-dashed border-[#e0c48f]" />
+                                                      <span className="rounded-full bg-[#fff6e5] px-2 py-[2px] text-[10px] uppercase tracking-[0.12em] text-[#a25b00] shadow-inner ring-1 ring-[#f2d9a6]">
+                                                        Sit {sitLabel}
+                                                      </span>
+                                                      <div className="h-[1px] flex-1 border-t border-dashed border-[#e0c48f]" />
+                                                    </div>
+                                                  ) : null}
+
+                                                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dbe4f2] bg-white px-2 py-1 shadow-sm">
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="rounded-full bg-[#e7eef9] px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4a90e2]">
+                                                        Leg {legIdx + 1}
+                                                      </span>
+                                                      {blockLabel ? (
+                                                        <span className="rounded-md bg-[#fff2d6] px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8a5b0a] ring-1 ring-[#f1cf8b]">
+                                                          Block {blockLabel}
+                                                        </span>
+                                                      ) : null}
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-[2px] text-[11px] text-[#2f4058]">
+                                                      {stations ? <div className="font-semibold">{stations}</div> : null}
+                                                      {times ? <div className="text-[#4a5a73]">{times}</div> : null}
+                                                      {meta ? <div className="text-[#6b7a90]">{meta}</div> : null}
+                                                    </div>
                                                   </div>
-                                                </div>
+                                                </Fragment>
                                               );
                                             })}
                                           </div>
