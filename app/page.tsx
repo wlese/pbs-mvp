@@ -727,6 +727,7 @@ export default function Home() {
   }
 
   function handleAdminMonthChange(value: number) {
+    setAdminDaysInMonth(deriveBidMonthDays(adminYear, value));
     setAdminMonth(value);
     setAdminTouched(true);
   }
@@ -1035,7 +1036,7 @@ export default function Home() {
                   <div>
                     <div className="font-semibold">User view will show</div>
                     <div className="text-[13px] text-[#4a4a4a]">
-                      {monthLabel} • {adminDaysInMonth}-day bid month
+                      {monthLabel} • {bidMonthLength}-day bid month
                     </div>
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.16em] text-[#4a90e2] font-semibold">
