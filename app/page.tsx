@@ -367,8 +367,6 @@ function deriveSequenceStartDates(
     }
   });
 
-  let hasExplicitStartDays = parsedStartDates.length > 0;
-
   const providedStartDates = Array.isArray(sequence.startDates)
     ? sequence.startDates
         .map((value) => {
@@ -380,21 +378,17 @@ function deriveSequenceStartDates(
 
   providedStartDates.forEach((date) => addDate(date as Date));
 
-  hasExplicitStartDays = parsedStartDates.length > 0;
-
   const primaryStart = parseCalendarDayToDate(
     sequence.dutyDays?.[0]?.calendarDay,
     displayYear,
     displayMonth,
   );
 
-  if (!hasExplicitStartDays) {
-    addDate(primaryStart);
-  }
+  addDate(primaryStart);
 
   const instances = sequence.instancesInMonth ?? parsedStartDates.length;
 
-  if (primaryStart && !hasExplicitStartDays && instances > parsedStartDates.length) {
+  if (primaryStart && instances > parsedStartDates.length) {
     let cursor = new Date(primaryStart);
     const maxIterations = Math.max(instances * 2, instances + 3);
 
@@ -1561,6 +1555,18 @@ export default function Home() {
                               <ul className="mt-3 space-y-3 text-xs text-[#2f4058]">
                                 {dutyDays.map((day, dayIdx) => {
                                   const layoverDetails = parseLayoverDetails(day.hotelLayover);
+                                  const rawSummaryLayover =
+                                    !layoverDetails && day.summary
+                                      ? parseLayoverDetails(day.summary)
+                                      : null;
+                                  const summaryLooksLikeLayover = Boolean(
+                                    rawSummaryLayover?.layoverClock ||
+                                      /hotel/i.test(day.summary ?? "") ||
+                                      /\d{3}[−-]\d{3}/.test(day.summary ?? ""),
+                                  );
+                                  const layoverFromSummary = summaryLooksLikeLayover
+                                    ? rawSummaryLayover
+                                    : null;
                                   const expectLayover = dutyDays.length > 1 && dayIdx < dutyDays.length - 1;
                                   const lastArrivalStation = day.legs?.[day.legs.length - 1]?.arrivalStation;
                                   const fallbackLayover =
@@ -1571,13 +1577,14 @@ export default function Home() {
                                           layoverClock: null,
                                         }
                                       : null;
-                                  const displayedLayover = layoverDetails ?? fallbackLayover;
+                                  const displayedLayover = layoverDetails ?? layoverFromSummary ?? fallbackLayover;
                                   const layoverKey = `${sequenceNumber}-day-${dayIdx}-layover`;
                                   const isLayoverExpanded = Boolean(
                                     expandedLayovers[layoverKey]
                                   );
                                   const calendarLabel = day.calendarDay || day.day;
                                   const formattedReport = formatDualClock(day.reportTime);
+                                  const shouldShowSummary = Boolean(day.summary && !summaryLooksLikeLayover);
 
                                   return (
                                     <Fragment key={`${sequenceNumber}-day-wrapper-${dayIdx}`}>
@@ -1599,7 +1606,7 @@ export default function Home() {
                                                   </span>
                                                 ) : null}
                                               </div>
-                                              {day.summary ? (
+                                              {shouldShowSummary ? (
                                                 <div className="font-semibold text-[#23426d]">{day.summary}</div>
                                               ) : null}
                                             </div>
