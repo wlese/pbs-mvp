@@ -431,10 +431,6 @@ function dayKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function deriveBidMonthDays(year: number, month: number) {
-  return getBidMonthLength(year, month);
-}
-
 // ---------- Component ----------
 
 export default function Home() {
@@ -479,9 +475,6 @@ export default function Home() {
   const inferredYearMonth = inferYearMonth(result);
   const [adminYear, setAdminYear] = useState<number>(inferredYearMonth.year);
   const [adminMonth, setAdminMonth] = useState<number>(inferredYearMonth.month);
-  const [adminDaysInMonth, setAdminDaysInMonth] = useState<number>(() =>
-    deriveBidMonthDays(inferredYearMonth.year, inferredYearMonth.month)
-  );
   const [adminTouched, setAdminTouched] = useState(false);
 
   useEffect(() => {
@@ -562,7 +555,6 @@ export default function Home() {
 
     setAdminYear(next.year);
     setAdminMonth(next.month);
-    setAdminDaysInMonth(deriveBidMonthDays(next.year, next.month));
   }, [result, adminTouched]);
 
   function handleLogin(e: React.FormEvent<HTMLFormElement>) {
@@ -745,11 +737,6 @@ export default function Home() {
     setAdminTouched(true);
   }
 
-  function handleAdminDayCountChange(value: number) {
-    setAdminDaysInMonth(value);
-    setAdminTouched(true);
-  }
-
   if (!authChecked) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-[#f4f7fb] text-[#4a4a4a]">
@@ -836,21 +823,10 @@ export default function Home() {
   const displayYear = adminYear;
   const displayMonth = adminMonth;
   const monthLabel = `${BID_MONTHS[displayMonth]} ${displayYear}`;
-  const baseBidMonthRange = getBidMonthRange(displayYear, displayMonth);
-  const bidMonthDates = buildBidMonthDates(
-    displayYear,
-    displayMonth,
-    adminDaysInMonth,
-  );
-  const adjustedRange = {
-    start: baseBidMonthRange.start,
-    end: (() => {
-      const end = new Date(baseBidMonthRange.start);
-      end.setDate(baseBidMonthRange.start.getDate() + adminDaysInMonth - 1);
-      return end;
-    })(),
-  };
-  const calendarDays = buildCalendar(adjustedRange);
+  const bidMonthRange = getBidMonthRange(displayYear, displayMonth);
+  const bidMonthDates = buildBidMonthDates(displayYear, displayMonth);
+  const bidMonthLength = getBidMonthLength(displayYear, displayMonth);
+  const calendarDays = buildCalendar(bidMonthRange);
   const dayGridStyle = {
     gridTemplateColumns: `repeat(${bidMonthDates.length}, minmax(0, 1fr))`,
   };
@@ -1016,7 +992,7 @@ export default function Home() {
                   Changes save automatically.
                 </p>
 
-                <div className="grid md:grid-cols-3 gap-3 text-sm">
+                <div className="grid md:grid-cols-2 gap-3 text-sm">
                   <label className="flex flex-col gap-1">
                     <span className="text-[10px] uppercase tracking-[0.16em] text-[#8a9ab5] font-semibold">
                       Month
@@ -1047,35 +1023,13 @@ export default function Home() {
                       onChange={(e) => handleAdminYearChange(Number(e.target.value))}
                     />
                   </label>
-
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] uppercase tracking-[0.16em] text-[#8a9ab5] font-semibold">
-                      Bid month length
-                    </span>
-                    <div className="flex items-center gap-2 bg-[#eef3fb] border border-[#c7dff8] rounded-lg p-2">
-                      {[30, 31].map((days) => (
-                        <button
-                          key={days}
-                          type="button"
-                          onClick={() => handleAdminDayCountChange(days)}
-                          className={`flex-1 py-2 rounded-md text-sm font-semibold transition-colors ${
-                            adminDaysInMonth === days
-                              ? "bg-white text-[#1f3f6a] shadow"
-                              : "text-[#4a4a4a]"
-                          }`}
-                        >
-                          {days}-Day
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
 
                 <div className="bg-[#eef3ff] border border-[#d1defa] rounded-xl px-3 py-2 text-sm text-[#2f3f58] flex items-center justify-between">
                   <div>
                     <div className="font-semibold">User view will show</div>
                     <div className="text-[13px] text-[#4a4a4a]">
-                      {monthLabel} • {adminDaysInMonth}-day bid month
+                      {monthLabel} • {bidMonthLength}-day bid month
                     </div>
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.16em] text-[#4a90e2] font-semibold">
