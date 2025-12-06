@@ -727,6 +727,7 @@ export default function Home() {
   }
 
   function handleAdminMonthChange(value: number) {
+    setAdminDaysInMonth(deriveBidMonthDays(adminYear, value));
     setAdminMonth(value);
     setAdminTouched(true);
   }
