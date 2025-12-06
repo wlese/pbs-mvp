@@ -5,6 +5,12 @@ import { Fragment, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import pairingsData from "@/data/pairings.json";
+import {
+  BID_MONTHS,
+  buildBidMonthDates,
+  getBidMonthLength,
+  getBidMonthRange,
+} from "@/lib/bidMonth";
 
 // ---------- Types ----------
 
@@ -248,21 +254,6 @@ const PROGRESS_STEPS = [
 const VALID_USERNAME = "test";
 const VALID_PASSWORD = "test";
 
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
 // ---------- Helpers for pairings.json ----------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -408,35 +399,28 @@ function inferYearMonth(result: PbsResult | null): {
     if (d) {
       const year = d.getFullYear();
       const month = d.getMonth();
-      return { year, month, label: `${MONTHS[month]} ${year}` };
+      return { year, month, label: `${BID_MONTHS[month]} ${year}` };
     }
   }
 
   // Fallback to December 2025 (like your screenshots)
   return { year: 2025, month: 11, label: "December 2025" };
 }
-
-function buildCalendar(
-  year: number,
-  month: number,
-  daysInMonthLimit?: number
-): CalendarDay[] {
-  const firstOfMonth = new Date(year, month, 1);
+function buildCalendar(range: { start: Date; end: Date }): CalendarDay[] {
+  const firstOfMonth = range.start;
   const startDay = firstOfMonth.getDay(); // 0=Sun
   const days: CalendarDay[] = [];
 
-  const firstCellDate = new Date(year, month, 1 - startDay);
+  const firstCellDate = new Date(range.start);
+  firstCellDate.setDate(range.start.getDate() - startDay);
+
   for (let i = 0; i < 42; i++) {
     const d = new Date(firstCellDate);
     d.setDate(firstCellDate.getDate() + i);
     days.push({
       date: d,
       day: d.getDate(),
-      inMonth:
-        d.getMonth() === month &&
-        (typeof daysInMonthLimit === "number"
-          ? d.getDate() <= daysInMonthLimit
-          : true),
+      inMonth: d >= range.start && d <= range.end,
     });
   }
 
@@ -445,11 +429,6 @@ function buildCalendar(
 
 function dayKey(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function deriveBidMonthDays(year: number, month: number) {
-  const naturalMonthLength = new Date(year, month + 1, 0).getDate();
-  return Math.min(31, Math.max(30, naturalMonthLength));
 }
 
 // ---------- Component ----------
@@ -496,9 +475,6 @@ export default function Home() {
   const inferredYearMonth = inferYearMonth(result);
   const [adminYear, setAdminYear] = useState<number>(inferredYearMonth.year);
   const [adminMonth, setAdminMonth] = useState<number>(inferredYearMonth.month);
-  const [adminDaysInMonth, setAdminDaysInMonth] = useState<number>(() =>
-    deriveBidMonthDays(inferredYearMonth.year, inferredYearMonth.month)
-  );
   const [adminTouched, setAdminTouched] = useState(false);
 
   useEffect(() => {
@@ -579,7 +555,6 @@ export default function Home() {
 
     setAdminYear(next.year);
     setAdminMonth(next.month);
-    setAdminDaysInMonth(deriveBidMonthDays(next.year, next.month));
   }, [result, adminTouched]);
 
   function handleLogin(e: React.FormEvent<HTMLFormElement>) {
@@ -751,18 +726,26 @@ export default function Home() {
     }
   }
 
+  // Legacy compatibility: derive bid month day count from the hard-coded
+  // bid month definitions. This replaces the removed 30/31-day selector
+  // while keeping the old helper name available for any lingering callers.
+  function deriveBidMonthDays(year: number, month: number) {
+    return getBidMonthLength(year, month);
+  }
+
   function handleAdminMonthChange(value: number) {
     setAdminMonth(value);
     setAdminTouched(true);
   }
 
+  const setAdminDaysInMonth = (value: number) => {
+    const derived = deriveBidMonthDays(adminYear, value);
+    handleAdminMonthChange(value);
+    return derived;
+  };
+
   function handleAdminYearChange(value: number) {
     setAdminYear(value);
-    setAdminTouched(true);
-  }
-
-  function handleAdminDayCountChange(value: number) {
-    setAdminDaysInMonth(value);
     setAdminTouched(true);
   }
 
@@ -851,11 +834,15 @@ export default function Home() {
   // Calendar based on admin selection (defaulted from inferred result)
   const displayYear = adminYear;
   const displayMonth = adminMonth;
-  const monthLabel = `${MONTHS[displayMonth]} ${displayYear}`;
-  const calendarDays = buildCalendar(displayYear, displayMonth, adminDaysInMonth);
-  const dayCells = Array.from({ length: adminDaysInMonth }, (_, idx) => idx + 1);
+  const monthLabel = `${BID_MONTHS[displayMonth]} ${displayYear}`;
+  const bidMonthRange = getBidMonthRange(displayYear, displayMonth);
+  const bidMonthDates = buildBidMonthDates(displayYear, displayMonth);
+  const bidMonthLength = getBidMonthLength(displayYear, displayMonth);
+  // Legacy compatibility for code paths that referenced the removed day-count selector
+  const adminDaysInMonth = bidMonthLength;
+  const calendarDays = buildCalendar(bidMonthRange);
   const dayGridStyle = {
-    gridTemplateColumns: `repeat(${adminDaysInMonth}, minmax(0, 1fr))`,
+    gridTemplateColumns: `repeat(${bidMonthDates.length}, minmax(0, 1fr))`,
   };
 
   const layerIsReserve = (layer: number) =>
@@ -1019,7 +1006,7 @@ export default function Home() {
                   Changes save automatically.
                 </p>
 
-                <div className="grid md:grid-cols-3 gap-3 text-sm">
+                <div className="grid md:grid-cols-2 gap-3 text-sm">
                   <label className="flex flex-col gap-1">
                     <span className="text-[10px] uppercase tracking-[0.16em] text-[#8a9ab5] font-semibold">
                       Month
@@ -1029,7 +1016,7 @@ export default function Home() {
                       value={adminMonth}
                       onChange={(e) => handleAdminMonthChange(Number(e.target.value))}
                     >
-                      {MONTHS.map((m, idx) => (
+                      {BID_MONTHS.map((m, idx) => (
                         <option key={m} value={idx}>
                           {m}
                         </option>
@@ -1050,28 +1037,6 @@ export default function Home() {
                       onChange={(e) => handleAdminYearChange(Number(e.target.value))}
                     />
                   </label>
-
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] uppercase tracking-[0.16em] text-[#8a9ab5] font-semibold">
-                      Bid month length
-                    </span>
-                    <div className="flex items-center gap-2 bg-[#eef3fb] border border-[#c7dff8] rounded-lg p-2">
-                      {[30, 31].map((days) => (
-                        <button
-                          key={days}
-                          type="button"
-                          onClick={() => handleAdminDayCountChange(days)}
-                          className={`flex-1 py-2 rounded-md text-sm font-semibold transition-colors ${
-                            adminDaysInMonth === days
-                              ? "bg-white text-[#1f3f6a] shadow"
-                              : "text-[#4a4a4a]"
-                          }`}
-                        >
-                          {days}-Day
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
 
                 <div className="bg-[#eef3ff] border border-[#d1defa] rounded-xl px-3 py-2 text-sm text-[#2f3f58] flex items-center justify-between">
@@ -1377,9 +1342,12 @@ export default function Home() {
                           className="grid gap-[1px] text-[10px] tracking-[0.12em] text-[#777] uppercase"
                           style={dayGridStyle}
                         >
-                          {dayCells.map((day) => (
-                            <div key={day} className="text-center leading-[14px]">
-                              {day}
+                          {bidMonthDates.map((day) => (
+                            <div
+                              key={dayKey(day)}
+                              className="text-center leading-[14px]"
+                            >
+                              {day.getDate()}
                             </div>
                           ))}
                         </div>
@@ -1415,10 +1383,8 @@ export default function Home() {
                               className="flex-1 grid gap-[1px]"
                               style={dayGridStyle}
                             >
-                              {dayCells.map((day) => {
-                                const iso = dayKey(
-                                  new Date(displayYear, displayMonth, day)
-                                );
+                              {bidMonthDates.map((day) => {
+                                const iso = dayKey(day);
                                 const offDay = hasOffRequest(iso, layer);
                                 const pairingDay = hasPairingForLayer(iso, layer);
 
@@ -1433,7 +1399,7 @@ export default function Home() {
 
                                 return (
                                   <div
-                                    key={day}
+                                    key={iso}
                                     className={`${baseCell} ${colorClass}`}
                                     aria-hidden
                                   />
