@@ -164,18 +164,26 @@ function decimalHoursToClock(value?: string): string | null {
 function parseLayoverDetails(raw?: string) {
   if (!raw) return null;
 
-  const tokens = raw.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return null;
+  const rawTokens = raw.split(/\s+/).filter(Boolean);
+  if (rawTokens.length === 0) return null;
 
-  const station = tokens.shift();
+  const tokens = [...rawTokens];
   const timeIndex = tokens.findIndex((token) => /\d{1,2}\.\d{2}/.test(token));
   const timeToken = timeIndex >= 0 ? tokens.splice(timeIndex, 1)[0] : null;
   const layoverClock = decimalHoursToClock(timeToken ?? undefined);
 
+  const stationToken = tokens.find((token) => /^[A-Z]{3}$/.test(token));
+  const station = stationToken ?? tokens.shift();
+
   const hotelName = tokens
-    .filter((token) => token !== "−−" && token !== "--")
+    .filter((token) => token !== stationToken)
+    .filter((token) => token !== "−−" && token !== "--" && token !== "|")
+    .filter((token) => !/[\d]/.test(token))
+    .filter((token) => !/(shuttle|limo)/i.test(token))
     .join(" ")
     .trim();
+
+  if (!station && !hotelName && !layoverClock) return null;
 
   return {
     station,
@@ -263,23 +271,26 @@ function formatMinutesLabel(value: number | null) {
 function parseCalendarDayToDate(
   calendarDay: string | undefined,
   displayYear: number,
-  displayMonth: number
+  displayMonth: number,
+  bidMonthRange: BidMonthRange,
 ) {
   if (!calendarDay) return null;
 
-  const match = calendarDay.match(/(?:(\d{1,2})\/)?(\d{1,2})$/);
+  const match = calendarDay.match(/(\d{1,2})$/);
   if (!match) return null;
 
-  const [, monthPart, dayPart] = match;
-  const month = monthPart ? Number(monthPart) : displayMonth + 1;
-  const day = Number(dayPart);
+  const day = Number(match[1]);
+  if (!Number.isFinite(day)) return null;
 
-  if (!Number.isFinite(month) || !Number.isFinite(day)) return null;
+  const anchored = new Date(bidMonthRange.start);
+  anchored.setDate(anchored.getDate() + (day - 1));
 
-  const year = month < displayMonth + 1 ? displayYear + 1 : displayYear;
-  const date = new Date(year, month - 1, day);
+  if (anchored >= bidMonthRange.start && anchored <= bidMonthRange.end) {
+    return anchored;
+  }
 
-  return Number.isNaN(date.getTime()) ? null : date;
+  const fallback = new Date(displayYear, displayMonth, day);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
 }
 
 function buildBidMonthMiniCalendar(range: BidMonthRange) {
@@ -382,6 +393,7 @@ function deriveSequenceStartDates(
     sequence.dutyDays?.[0]?.calendarDay,
     displayYear,
     displayMonth,
+    bidMonthRange,
   );
 
   addDate(primaryStart);
