@@ -203,6 +203,12 @@ function formatDualClock(raw?: string | null) {
   return formatted || raw;
 }
 
+function formatHomeClock(raw?: string | null) {
+  if (!raw) return null;
+  const [home] = raw.split("/").filter(Boolean);
+  return formatClockLabel(home ?? "");
+}
+
 function formatBlockTime(block?: string | null) {
   if (!block) return null;
   const trimmed = block.trim();
@@ -303,6 +309,13 @@ function buildBidMonthMiniCalendar(range: BidMonthRange) {
   return cells;
 }
 
+function monthBounds(date: Date): BidMonthRange {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+  return { start, end };
+}
+
 function deriveSequenceStartDates(
   sequence: PairingSequence,
   displayYear: number,
@@ -313,10 +326,11 @@ function deriveSequenceStartDates(
 
   const addDate = (value: Date | null) => {
     if (!value) return;
-    if (value < bidMonthRange.start || value > bidMonthRange.end) return;
-    const key = dayKey(value);
+    const normalized = new Date(value);
+    normalized.setHours(0, 0, 0, 0);
+    const key = dayKey(normalized);
     if (parsedStartDates.some((existing) => dayKey(existing) === key)) return;
-    parsedStartDates.push(value);
+    parsedStartDates.push(normalized);
   };
 
   const providedStartDates = Array.isArray(sequence.startDates)
@@ -348,11 +362,12 @@ function deriveSequenceStartDates(
       if (parsedStartDates.length >= instances) break;
       cursor = new Date(cursor.getTime() + 7 * MS_IN_DAY);
       addDate(cursor);
-      if (cursor > bidMonthRange.end) break;
     }
   }
 
-  return parsedStartDates.map((date) => dayKey(date));
+  parsedStartDates.sort((a, b) => a.getTime() - b.getTime());
+
+  return parsedStartDates;
 }
 
 type PbsResult = {
@@ -1387,16 +1402,22 @@ export default function Home() {
                         const dutyDays = Array.isArray(seq.dutyDays)
                           ? seq.dutyDays
                           : [];
-                        const miniMonthCells = buildBidMonthMiniCalendar(
-                          bidMonthRange
-                        );
-                        const startDateKeys = deriveSequenceStartDates(
+                        const startDates = deriveSequenceStartDates(
                           seq,
                           displayYear,
                           displayMonth,
-                          bidMonthRange
+                          bidMonthRange,
                         );
-                        const startDateSet = new Set(startDateKeys);
+                        const miniRange =
+                          startDates.length > 0
+                            ? monthBounds(startDates[0])
+                            : bidMonthRange;
+                        const miniMonthCells = buildBidMonthMiniCalendar(
+                          miniRange,
+                        );
+                        const startDateSet = new Set(
+                          startDates.map((date) => dayKey(date)),
+                        );
                         const firstLeg = dutyDays[0]?.legs?.[0];
                         const lastDutyLegs =
                           dutyDays[dutyDays.length - 1]?.legs ?? [];
@@ -1407,7 +1428,10 @@ export default function Home() {
                           firstLeg?.departureStation && lastLeg?.arrivalStation
                             ? `${firstLeg.departureStation} → ${lastLeg.arrivalStation}`
                             : null;
-                        const finalRelease = formatDualClock(
+                        const finalReport = formatHomeClock(
+                          dutyDays[0]?.reportTime,
+                        );
+                        const finalRelease = formatHomeClock(
                           dutyDays[dutyDays.length - 1]?.releaseTime,
                         );
 
@@ -1473,12 +1497,20 @@ export default function Home() {
                                 </div>
                               </div>
 
-                              {finalRelease ? (
-                                <div className="flex items-center gap-2 text-right">
-                                  <span className="rounded-full bg-[#e8f0ff] px-3 py-[6px] text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1f4b99] shadow-inner ring-1 ring-[#bed2ff]">
-                                    <span className="text-[10px] font-bold">Sequence Release</span>
-                                    <span className="ml-1 text-[12px] font-black leading-[14px]">{finalRelease}</span>
-                                  </span>
+                              {finalReport || finalRelease ? (
+                                <div className="flex flex-col items-end gap-1 text-right">
+                                  {finalReport ? (
+                                    <span className="rounded-full bg-[#f0f4ff] px-3 py-[6px] text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1f4b99] shadow-inner ring-1 ring-[#cddaf9]">
+                                      <span className="text-[10px] font-bold">Sequence Report</span>
+                                      <span className="ml-1 text-[12px] font-black leading-[14px]">{finalReport}</span>
+                                    </span>
+                                  ) : null}
+                                  {finalRelease ? (
+                                    <span className="rounded-full bg-[#e8f0ff] px-3 py-[6px] text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1f4b99] shadow-inner ring-1 ring-[#bed2ff]">
+                                      <span className="text-[10px] font-bold">Sequence Release</span>
+                                      <span className="ml-1 text-[12px] font-black leading-[14px]">{finalRelease}</span>
+                                    </span>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
@@ -1488,6 +1520,16 @@ export default function Home() {
                                 {dutyDays.map((day, dayIdx) => {
                                   const layoverDetails = parseLayoverDetails(day.hotelLayover);
                                   const expectLayover = dutyDays.length > 1 && dayIdx < dutyDays.length - 1;
+                                  const lastArrivalStation = day.legs?.[day.legs.length - 1]?.arrivalStation;
+                                  const fallbackLayover =
+                                    !layoverDetails && expectLayover && lastArrivalStation
+                                      ? {
+                                          station: lastArrivalStation,
+                                          hotelName: `${lastArrivalStation} layover details not provided`,
+                                          layoverClock: null,
+                                        }
+                                      : null;
+                                  const displayedLayover = layoverDetails ?? fallbackLayover;
                                   const layoverKey = `${sequenceNumber}-day-${dayIdx}-layover`;
                                   const isLayoverExpanded = Boolean(
                                     expandedLayovers[layoverKey]
@@ -1517,9 +1559,6 @@ export default function Home() {
                                               </div>
                                               {day.summary ? (
                                                 <div className="font-semibold text-[#23426d]">{day.summary}</div>
-                                              ) : null}
-                                              {day.reportLine ? (
-                                                <div className="text-[#4a4a4a] whitespace-pre-wrap">{day.reportLine}</div>
                                               ) : null}
                                             </div>
                                           </div>
@@ -1597,7 +1636,7 @@ export default function Home() {
 
                                       </li>
 
-                                      {layoverDetails ? (
+                                      {displayedLayover ? (
                                         <li className="rounded-xl border border-dashed border-[#d6e3f5] bg-[#f0f5ff] px-3 py-2 shadow-inner">
                                           <button
                                             type="button"
@@ -1606,11 +1645,11 @@ export default function Home() {
                                           >
                                             <span className="flex flex-wrap items-center gap-2">
                                               <span className="text-[11px] font-semibold italic text-[#23426d]">
-                                                *LAYOVER {layoverDetails.station || "XXX"}*
+                                                *LAYOVER {displayedLayover.station || "XXX"}*
                                               </span>
-                                              {layoverDetails.layoverClock ? (
+                                              {displayedLayover.layoverClock ? (
                                                 <span className="rounded-full bg-white px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#23426d] shadow-inner">
-                                                  Layover Length: {layoverDetails.layoverClock}
+                                                  Layover Length: {displayedLayover.layoverClock}
                                                 </span>
                                               ) : null}
                                             </span>
@@ -1620,8 +1659,8 @@ export default function Home() {
                                           </button>
                                           {isLayoverExpanded ? (
                                             <div className="mt-2 space-y-[2px] rounded-lg bg-white/70 px-2 py-2 text-[11px] text-[#3d4c66] shadow-inner">
-                                              <div className="font-semibold text-[#23426d]">{layoverDetails.station}</div>
-                                              <div className="whitespace-pre-wrap text-[#2f4058]">{layoverDetails.hotelName}</div>
+                                              <div className="font-semibold text-[#23426d]">{displayedLayover.station}</div>
+                                              <div className="whitespace-pre-wrap text-[#2f4058]">{displayedLayover.hotelName}</div>
                                             </div>
                                           ) : null}
                                         </li>
