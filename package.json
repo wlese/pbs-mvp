@@ -13,14 +13,14 @@
     "next": "14.2.5",
     "openai": "^6.9.1",
     "pdf-parse": "^1.1.1",
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
     "baseline-browser-mapping": "^2.8.31",
     "eslint": "^9",
     "eslint-config-next": "14.2.5",
