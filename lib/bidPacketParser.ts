@@ -1,5 +1,7 @@
 import type { PDFParseOptions, PDFParseResult } from "pdf-parse";
 
+import { getBidMonthDisplayRange } from "./bidMonth";
+
 type PdfParseFn = (
   data: Buffer | Uint8Array | ArrayBuffer | string,
   options?: PDFParseOptions,
@@ -572,13 +574,6 @@ function toUploadedSequence(
   };
 }
 
-function buildDisplayRange(monthIndex: number, year: number) {
-  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
-  const start = new Date(Date.UTC(year, monthIndex, 1)).toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(year, monthIndex, daysInMonth)).toISOString().slice(0, 10);
-  return { start, end };
-}
-
 export async function parseBidPdf(buffer: Buffer, fileName: string): Promise<UploadedBidPacket> {
   const pdfParse = await loadPdfParse();
   const pdf = await pdfParse(buffer);
@@ -588,7 +583,7 @@ export async function parseBidPdf(buffer: Buffer, fileName: string): Promise<Upl
   const { base, fleet } = extractBaseFleetFromFile(fileName);
   const { month, year } = extractMonthYear(pages, fileName);
   const monthIndex = Math.max(0, MONTHS.indexOf(month));
-  const displayRange = buildDisplayRange(monthIndex, year);
+  const displayRange = getBidMonthDisplayRange(year, monthIndex);
 
   const sequences: SequenceRecord[] = [];
   for (const page of pages.length ? pages : [rawText]) {
