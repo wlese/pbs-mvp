@@ -7,6 +7,7 @@ import Image from "next/image";
 import pairingsData from "@/data/pairings.json";
 import {
   BID_MONTHS,
+  type BidMonthRange,
   buildBidMonthDates,
   getBidMonthLength,
   getBidMonthRange,
@@ -85,6 +86,7 @@ type PairingSequence = {
   instancesInMonth?: number;
   totals?: { credit?: number };
   dutyDays?: SequenceDutyDay[];
+  startDates?: string[];
 };
 
 type UploadedBidPacket = {
@@ -204,37 +206,83 @@ function parseCalendarDayToDate(
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function buildMiniCalendarCells(
-  dutyDays: { calendarDay?: string; day?: string }[],
-  displayYear: number,
-  displayMonth: number
-) {
-  const dutyDates = dutyDays
-    .map((day) => parseCalendarDayToDate(day.calendarDay, displayYear, displayMonth))
-    .filter(Boolean) as Date[];
+function buildBidMonthMiniCalendar(range: BidMonthRange) {
+  const start = new Date(range.start);
+  const end = new Date(range.end);
 
-  if (!dutyDates.length) {
-    return DAY_LABELS.map((label, idx) => ({
-      label,
-      dayNumber: dutyDays[idx]?.day ? Number(dutyDays[idx].day) || idx + 1 : idx + 1,
-      active: idx < dutyDays.length,
-    }));
+  const firstVisible = new Date(start);
+  firstVisible.setDate(start.getDate() - start.getDay());
+
+  const lastVisible = new Date(end);
+  lastVisible.setDate(end.getDate() + (6 - end.getDay()));
+
+  const cells: { date: Date; inRange: boolean }[] = [];
+
+  for (
+    let cursor = new Date(firstVisible);
+    cursor <= lastVisible;
+    cursor = new Date(cursor.getTime() + MS_IN_DAY)
+  ) {
+    const date = new Date(cursor);
+    cells.push({
+      date,
+      inRange: date >= start && date <= end,
+    });
   }
 
-  dutyDates.sort((a, b) => a.getTime() - b.getTime());
-  const activeKeys = new Set(dutyDates.map((d) => d.toDateString()));
-  const first = dutyDates[0];
-  const start = new Date(first);
-  start.setDate(first.getDate() - first.getDay());
+  return cells;
+}
 
-  return DAY_LABELS.map((label, idx) => {
-    const date = new Date(start.getTime() + idx * MS_IN_DAY);
-    return {
-      label,
-      dayNumber: date.getDate(),
-      active: activeKeys.has(date.toDateString()),
-    };
-  });
+function deriveSequenceStartDates(
+  sequence: PairingSequence,
+  displayYear: number,
+  displayMonth: number,
+  bidMonthRange: BidMonthRange,
+) {
+  const parsedStartDates: Date[] = [];
+
+  const addDate = (value: Date | null) => {
+    if (!value) return;
+    if (value < bidMonthRange.start || value > bidMonthRange.end) return;
+    const key = dayKey(value);
+    if (parsedStartDates.some((existing) => dayKey(existing) === key)) return;
+    parsedStartDates.push(value);
+  };
+
+  const providedStartDates = Array.isArray(sequence.startDates)
+    ? sequence.startDates
+        .map((value) => {
+          const date = new Date(value);
+          return Number.isNaN(date.getTime()) ? null : date;
+        })
+        .filter(Boolean)
+    : [];
+
+  providedStartDates.forEach((date) => addDate(date as Date));
+
+  const primaryStart = parseCalendarDayToDate(
+    sequence.dutyDays?.[0]?.calendarDay,
+    displayYear,
+    displayMonth,
+  );
+
+  addDate(primaryStart);
+
+  const instances = sequence.instancesInMonth ?? parsedStartDates.length;
+
+  if (primaryStart && instances > parsedStartDates.length) {
+    let cursor = new Date(primaryStart);
+    const maxIterations = Math.max(instances * 2, instances + 3);
+
+    for (let idx = 0; idx < maxIterations; idx += 1) {
+      if (parsedStartDates.length >= instances) break;
+      cursor = new Date(cursor.getTime() + 7 * MS_IN_DAY);
+      addDate(cursor);
+      if (cursor > bidMonthRange.end) break;
+    }
+  }
+
+  return parsedStartDates.map((date) => dayKey(date));
 }
 
 type PbsResult = {
@@ -1256,11 +1304,16 @@ export default function Home() {
                         const dutyDays = Array.isArray(seq.dutyDays)
                           ? seq.dutyDays
                           : [];
-                        const calendarCells = buildMiniCalendarCells(
-                          dutyDays,
-                          displayYear,
-                          displayMonth
+                        const miniMonthCells = buildBidMonthMiniCalendar(
+                          bidMonthRange
                         );
+                        const startDateKeys = deriveSequenceStartDates(
+                          seq,
+                          displayYear,
+                          displayMonth,
+                          bidMonthRange
+                        );
+                        const startDateSet = new Set(startDateKeys);
                         const firstLeg = dutyDays[0]?.legs?.[0];
                         const lastDutyLegs =
                           dutyDays[dutyDays.length - 1]?.legs ?? [];
@@ -1281,25 +1334,33 @@ export default function Home() {
                               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                                 <div className="rounded-2xl border border-[#e2eaf7] bg-[#f6f8ff] p-3 shadow-inner">
                                   <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-[0.14em] text-[#6b7a90]">
-                                    {calendarCells.map((cell) => (
-                                      <div key={`${sequenceNumber}-${cell.label}`} className="text-center">
-                                        {cell.label}
+                                    {DAY_LABELS.map((label) => (
+                                      <div key={`${sequenceNumber}-${label}`} className="text-center">
+                                        {label}
                                       </div>
                                     ))}
                                   </div>
                                   <div className="mt-1 grid grid-cols-7 gap-1">
-                                    {calendarCells.map((cell, cellIdx) => (
-                                      <div
-                                        key={`${sequenceNumber}-cell-${cellIdx}`}
-                                        className={`flex h-8 items-center justify-center rounded-lg border text-[12px] font-semibold ${
-                                          cell.active
-                                            ? "border-[#4a90e2] bg-white text-[#23426d] shadow-sm"
-                                            : "border-transparent bg-[#e7eef9] text-[#7b8aa6]"
-                                        }`}
-                                      >
-                                        {cell.dayNumber ?? "–"}
-                                      </div>
-                                    ))}
+                                    {miniMonthCells.map((cell, cellIdx) => {
+                                      const iso = dayKey(cell.date);
+                                      const isStart = startDateSet.has(iso);
+                                      return (
+                                        <div
+                                          key={`${sequenceNumber}-cell-${cellIdx}`}
+                                          className={`flex h-8 items-center justify-center rounded-lg border text-[12px] font-semibold ${
+                                            isStart
+                                              ? "border-[#4a90e2] bg-white text-[#23426d] shadow-sm ring-1 ring-[#4a90e2]"
+                                              : "border-transparent"
+                                          } ${
+                                            cell.inRange
+                                              ? "bg-[#eef3ff] text-[#23426d]"
+                                              : "bg-[#f3f4f6] text-[#9aa0ad]"
+                                          }`}
+                                        >
+                                          {cell.date.getDate()}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
 
@@ -1424,8 +1485,15 @@ export default function Home() {
                                             onClick={() => toggleLayover(layoverKey)}
                                             className="flex w-full items-center justify-between gap-2 text-left"
                                           >
-                                            <span className="text-[11px] font-semibold italic text-[#23426d]">
-                                              *LAYOVER {layoverDetails.station || "XXX"}*
+                                            <span className="flex flex-wrap items-center gap-2">
+                                              <span className="text-[11px] font-semibold italic text-[#23426d]">
+                                                *LAYOVER {layoverDetails.station || "XXX"}*
+                                              </span>
+                                              {layoverDetails.layoverClock ? (
+                                                <span className="rounded-full bg-white px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#23426d] shadow-inner">
+                                                  Layover Length: {layoverDetails.layoverClock}
+                                                </span>
+                                              ) : null}
                                             </span>
                                             <span className="text-[10px] uppercase tracking-[0.12em] text-[#4a90e2]">
                                               {isLayoverExpanded ? "Hide" : "View"} details
@@ -1435,9 +1503,6 @@ export default function Home() {
                                             <div className="mt-2 space-y-[2px] rounded-lg bg-white/70 px-2 py-2 text-[11px] text-[#3d4c66] shadow-inner">
                                               <div className="font-semibold text-[#23426d]">{layoverDetails.station}</div>
                                               <div className="whitespace-pre-wrap text-[#2f4058]">{layoverDetails.hotelName}</div>
-                                              {layoverDetails.layoverClock ? (
-                                                <div className="text-[#4a4a4a]">Layover time: {layoverDetails.layoverClock}</div>
-                                              ) : null}
                                             </div>
                                           ) : null}
                                         </li>
