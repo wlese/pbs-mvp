@@ -1178,7 +1178,7 @@ export default function Home() {
                       {pairingSequences.length} pairings loaded
                     </div>
 
-                    <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
+                    <div className="max-h-[480px] overflow-y-auto space-y-3 pr-1">
                       {pairingSequences.map((seq, idx) => {
                         const sequenceNumber = seq.sequenceNumber ?? "Unknown";
                         const credit =
