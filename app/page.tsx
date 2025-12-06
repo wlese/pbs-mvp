@@ -333,6 +333,42 @@ function deriveSequenceStartDates(
     parsedStartDates.push(normalized);
   };
 
+  const startDaysFromRawLines = new Set<number>();
+  const calendarDayNumbers = new Set<number>();
+
+  sequence.dutyDays?.forEach((duty) => {
+    if (duty.rawLines) {
+      for (const line of duty.rawLines) {
+        const matches = line.matchAll(/(?<![\d./])([1-9]\d?)(?![\d/])/g);
+        for (const match of matches) {
+          const num = Number(match[1]);
+          if (Number.isFinite(num) && num >= 1 && num <= 31) {
+            startDaysFromRawLines.add(num);
+          }
+        }
+      }
+    }
+
+    if (duty.calendarDay) {
+      const dayMatch = duty.calendarDay.match(/(\d{1,2})$/);
+      if (dayMatch) {
+        const dayNum = Number(dayMatch[1]);
+        if (Number.isFinite(dayNum)) calendarDayNumbers.add(dayNum);
+      }
+    }
+  });
+
+  calendarDayNumbers.forEach((day) => startDaysFromRawLines.delete(day));
+
+  startDaysFromRawLines.forEach((dayNumber) => {
+    const candidate = new Date(displayYear, displayMonth, dayNumber);
+    if (candidate >= bidMonthRange.start && candidate <= bidMonthRange.end) {
+      addDate(candidate);
+    }
+  });
+
+  let hasExplicitStartDays = parsedStartDates.length > 0;
+
   const providedStartDates = Array.isArray(sequence.startDates)
     ? sequence.startDates
         .map((value) => {
@@ -344,17 +380,21 @@ function deriveSequenceStartDates(
 
   providedStartDates.forEach((date) => addDate(date as Date));
 
+  hasExplicitStartDays = parsedStartDates.length > 0;
+
   const primaryStart = parseCalendarDayToDate(
     sequence.dutyDays?.[0]?.calendarDay,
     displayYear,
     displayMonth,
   );
 
-  addDate(primaryStart);
+  if (!hasExplicitStartDays) {
+    addDate(primaryStart);
+  }
 
   const instances = sequence.instancesInMonth ?? parsedStartDates.length;
 
-  if (primaryStart && instances > parsedStartDates.length) {
+  if (primaryStart && !hasExplicitStartDays && instances > parsedStartDates.length) {
     let cursor = new Date(primaryStart);
     const maxIterations = Math.max(instances * 2, instances + 3);
 
@@ -1425,7 +1465,9 @@ export default function Home() {
                           ? lastDutyLegs[lastDutyLegs.length - 1]
                           : undefined;
                         const routeSummary =
-                          firstLeg?.departureStation && lastLeg?.arrivalStation
+                          firstLeg?.departureStation &&
+                          lastLeg?.arrivalStation &&
+                          firstLeg.departureStation !== lastLeg.arrivalStation
                             ? `${firstLeg.departureStation} → ${lastLeg.arrivalStation}`
                             : null;
                         const finalReport = formatHomeClock(
