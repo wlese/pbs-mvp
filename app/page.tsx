@@ -181,6 +181,61 @@ function parseLayoverDetails(raw?: string) {
   };
 }
 
+function parseCalendarDayToDate(
+  calendarDay: string | undefined,
+  displayYear: number,
+  displayMonth: number
+) {
+  if (!calendarDay) return null;
+
+  const match = calendarDay.match(/(?:(\d{1,2})\/)?(\d{1,2})$/);
+  if (!match) return null;
+
+  const [, monthPart, dayPart] = match;
+  const month = monthPart ? Number(monthPart) : displayMonth + 1;
+  const day = Number(dayPart);
+
+  if (!Number.isFinite(month) || !Number.isFinite(day)) return null;
+
+  const year = month < displayMonth + 1 ? displayYear + 1 : displayYear;
+  const date = new Date(year, month - 1, day);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function buildMiniCalendarCells(
+  dutyDays: { calendarDay?: string; day?: string }[],
+  displayYear: number,
+  displayMonth: number
+) {
+  const dutyDates = dutyDays
+    .map((day) => parseCalendarDayToDate(day.calendarDay, displayYear, displayMonth))
+    .filter(Boolean) as Date[];
+
+  if (!dutyDates.length) {
+    return DAY_LABELS.map((label, idx) => ({
+      label,
+      dayNumber: dutyDays[idx]?.day ? Number(dutyDays[idx].day) || idx + 1 : idx + 1,
+      active: idx < dutyDays.length,
+    }));
+  }
+
+  dutyDates.sort((a, b) => a.getTime() - b.getTime());
+  const activeKeys = new Set(dutyDates.map((d) => d.toDateString()));
+  const first = dutyDates[0];
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+
+  return DAY_LABELS.map((label, idx) => {
+    const date = new Date(start.getTime() + idx * MS_IN_DAY);
+    return {
+      label,
+      dayNumber: date.getDate(),
+      active: activeKeys.has(date.toDateString()),
+    };
+  });
+}
+
 type PbsResult = {
   summary?: string;
   daysOffProperties?: DaysOffProperty[];
@@ -242,6 +297,9 @@ const TABS: TabType[] = [
   "Award",
   "Standing Bid",
 ];
+
+const DAY_LABELS = ["Su", "M", "T", "W", "Th", "F", "Sa"];
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
 const PROGRESS_STEPS = [
   "Loading PBS rules…",
@@ -465,6 +523,7 @@ export default function Home() {
   const [pairingSequences, setPairingSequences] = useState<PairingSequence[]>([]);
   const [sequencesLoading, setSequencesLoading] = useState(false);
   const [sequencesError, setSequencesError] = useState<string | null>(null);
+  const [expandedLayovers, setExpandedLayovers] = useState<Record<string, boolean>>({});
   const [debugSequences, setDebugSequences] = useState<PairingSequence[]>([]);
   const [debugLoading, setDebugLoading] = useState(false);
   const [debugError, setDebugError] = useState<string | null>(null);
@@ -626,6 +685,13 @@ export default function Home() {
   function handleCopy(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
   }
+
+  const toggleLayover = (key: string) => {
+    setExpandedLayovers((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   async function handleLoadSequences() {
     setSequencesLoading(true);
@@ -1189,31 +1255,75 @@ export default function Home() {
                         const dutyDays = Array.isArray(seq.dutyDays)
                           ? seq.dutyDays
                           : [];
+                        const calendarCells = buildMiniCalendarCells(
+                          dutyDays,
+                          displayYear,
+                          displayMonth
+                        );
+                        const firstLeg = dutyDays[0]?.legs?.[0];
+                        const lastDutyLegs =
+                          dutyDays[dutyDays.length - 1]?.legs ?? [];
+                        const lastLeg = Array.isArray(lastDutyLegs)
+                          ? lastDutyLegs[lastDutyLegs.length - 1]
+                          : undefined;
+                        const routeSummary =
+                          firstLeg?.departureStation && lastLeg?.arrivalStation
+                            ? `${firstLeg.departureStation} → ${lastLeg.arrivalStation}`
+                            : null;
 
                         return (
                           <div
                             key={`${sequenceNumber}-${idx}`}
                             className="rounded-2xl border border-[#dbe4f2] bg-white p-4 shadow-[0_8px_20px_rgba(27,63,119,0.08)]"
                           >
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7eef9] pb-3">
-                              <div className="space-y-1">
-                                <div className="text-[11px] uppercase tracking-[0.14em] text-[#6b7a90]">Pairing</div>
-                                <div className="text-lg font-bold text-[#23426d]">#{sequenceNumber}</div>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#23426d]">
-                                <span className="rounded-full bg-[#eef3ff] px-3 py-1 text-[#23426d] shadow-inner">
-                                  {`${dutyDays.length || 0} Duty ${dutyDays.length === 1 ? "Day" : "Days"}`}
-                                </span>
-                                {credit ? (
-                                  <span className="rounded-full bg-[#e7f6ef] px-3 py-1 text-[#1f7a4a] shadow-inner">
-                                    {credit} credit
-                                  </span>
-                                ) : null}
-                                {instances ? (
-                                  <span className="rounded-full bg-[#fff4e5] px-3 py-1 text-[#a25b00] shadow-inner">
-                                    {instances}× in month
-                                  </span>
-                                ) : null}
+                            <div className="flex flex-col gap-3 border-b border-[#e7eef9] pb-3 md:flex-row md:items-center md:justify-between">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <div className="rounded-2xl border border-[#e2eaf7] bg-[#f6f8ff] p-3 shadow-inner">
+                                  <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-[0.14em] text-[#6b7a90]">
+                                    {calendarCells.map((cell) => (
+                                      <div key={`${sequenceNumber}-${cell.label}`} className="text-center">
+                                        {cell.label}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="mt-1 grid grid-cols-7 gap-1">
+                                    {calendarCells.map((cell, cellIdx) => (
+                                      <div
+                                        key={`${sequenceNumber}-cell-${cellIdx}`}
+                                        className={`flex h-8 items-center justify-center rounded-lg border text-[12px] font-semibold ${
+                                          cell.active
+                                            ? "border-[#4a90e2] bg-white text-[#23426d] shadow-sm"
+                                            : "border-transparent bg-[#e7eef9] text-[#7b8aa6]"
+                                        }`}
+                                      >
+                                        {cell.dayNumber ?? "–"}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <div className="text-[11px] uppercase tracking-[0.14em] text-[#6b7a90]">Pairing</div>
+                                  <div className="text-xl font-bold text-[#23426d]">#{sequenceNumber}</div>
+                                  {routeSummary ? (
+                                    <div className="text-[12px] text-[#4a5a73]">{routeSummary}</div>
+                                  ) : null}
+                                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#23426d]">
+                                    <span className="rounded-full bg-[#eef3ff] px-3 py-1 text-[#23426d] shadow-inner">
+                                      {`${dutyDays.length || 0} Duty ${dutyDays.length === 1 ? "Day" : "Days"}`}
+                                    </span>
+                                    {credit ? (
+                                      <span className="rounded-full bg-[#e7f6ef] px-3 py-1 text-[#1f7a4a] shadow-inner">
+                                        {credit} credit
+                                      </span>
+                                    ) : null}
+                                    {instances ? (
+                                      <span className="rounded-full bg-[#fff4e5] px-3 py-1 text-[#a25b00] shadow-inner">
+                                        {instances}× in month
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
                               </div>
                             </div>
 
@@ -1222,19 +1332,33 @@ export default function Home() {
                                 {dutyDays.map((day, dayIdx) => {
                                   const layoverDetails = parseLayoverDetails(day.hotelLayover);
                                   const expectLayover = dutyDays.length > 1 && dayIdx < dutyDays.length - 1;
+                                  const layoverKey = `${sequenceNumber}-day-${dayIdx}-layover`;
+                                  const isLayoverExpanded = Boolean(
+                                    expandedLayovers[layoverKey]
+                                  );
+                                  const calendarLabel = day.calendarDay || day.day;
 
                                   return (
                                     <Fragment key={`${sequenceNumber}-day-wrapper-${dayIdx}`}>
                                       <li className="rounded-xl border border-[#e2eaf7] bg-[#f7f9fd] px-3 py-2 shadow-inner">
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="flex items-center gap-2">
-                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e7eef9] text-[11px] font-semibold text-[#23426d]">
-                                              {dayIdx + 1}
+                                            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#cdd9f2] bg-white text-[11px] font-semibold text-[#23426d] shadow-sm">
+                                              {calendarLabel || dayIdx + 1}
                                             </div>
                                             <div className="space-y-1">
-                                              <div className="font-semibold text-[#23426d]">Duty Day {dayIdx + 1}</div>
+                                              <div className="flex items-center gap-2">
+                                                <div className="text-[10px] uppercase tracking-[0.14em] text-[#6b7a90]">
+                                                  Duty Day {dayIdx + 1}
+                                                </div>
+                                                {day.reportTime ? (
+                                                  <span className="rounded-full bg-white px-2 py-[2px] text-[10px] font-semibold text-[#23426d] shadow-inner">
+                                                    Report {day.reportTime}
+                                                  </span>
+                                                ) : null}
+                                              </div>
                                               {day.summary ? (
-                                                <div className="text-[#4a5a73]">{day.summary}</div>
+                                                <div className="font-semibold text-[#23426d]">{day.summary}</div>
                                               ) : null}
                                               {day.reportLine ? (
                                                 <div className="text-[#4a4a4a] whitespace-pre-wrap">{day.reportLine}</div>
@@ -1242,7 +1366,6 @@ export default function Home() {
                                             </div>
                                           </div>
                                           <div className="text-right text-[11px] text-[#4a5a73] leading-4">
-                                            {day.reportTime ? <div>Report: {day.reportTime}</div> : null}
                                             {day.releaseTime ? <div>Release: {day.releaseTime}</div> : null}
                                           </div>
                                         </div>
@@ -1294,17 +1417,28 @@ export default function Home() {
                                       </li>
 
                                       {layoverDetails ? (
-                                        <li className="flex items-start gap-2 rounded-xl border border-dashed border-[#d6e3f5] bg-[#f0f5ff] px-3 py-2 shadow-inner">
-                                          <span className="rounded-md bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#23426d] shadow-sm">
-                                            Layover
-                                          </span>
-                                          <div className="flex-1 space-y-[2px] text-[11px] text-[#3d4c66]">
-                                            <div className="font-semibold text-[#23426d]">{layoverDetails.station}</div>
-                                            <div className="whitespace-pre-wrap text-[#2f4058]">{layoverDetails.hotelName}</div>
-                                            {layoverDetails.layoverClock ? (
-                                              <div className="text-[#4a4a4a]">Layover time: {layoverDetails.layoverClock}</div>
-                                            ) : null}
-                                          </div>
+                                        <li className="rounded-xl border border-dashed border-[#d6e3f5] bg-[#f0f5ff] px-3 py-2 shadow-inner">
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleLayover(layoverKey)}
+                                            className="flex w-full items-center justify-between gap-2 text-left"
+                                          >
+                                            <span className="text-[11px] font-semibold italic text-[#23426d]">
+                                              *LAYOVER {layoverDetails.station || "XXX"}*
+                                            </span>
+                                            <span className="text-[10px] uppercase tracking-[0.12em] text-[#4a90e2]">
+                                              {isLayoverExpanded ? "Hide" : "View"} details
+                                            </span>
+                                          </button>
+                                          {isLayoverExpanded ? (
+                                            <div className="mt-2 space-y-[2px] rounded-lg bg-white/70 px-2 py-2 text-[11px] text-[#3d4c66] shadow-inner">
+                                              <div className="font-semibold text-[#23426d]">{layoverDetails.station}</div>
+                                              <div className="whitespace-pre-wrap text-[#2f4058]">{layoverDetails.hotelName}</div>
+                                              {layoverDetails.layoverClock ? (
+                                                <div className="text-[#4a4a4a]">Layover time: {layoverDetails.layoverClock}</div>
+                                              ) : null}
+                                            </div>
+                                          ) : null}
                                         </li>
                                       ) : expectLayover ? (
                                         <li className="flex items-center gap-2 rounded-xl border border-dashed border-[#f2b8b5] bg-[#fff5f5] px-3 py-2 text-[11px] text-[#a2342d] shadow-inner">
