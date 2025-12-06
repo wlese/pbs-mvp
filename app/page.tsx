@@ -5,6 +5,12 @@ import { Fragment, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import pairingsData from "@/data/pairings.json";
+import {
+  BID_MONTHS,
+  buildBidMonthDates,
+  getBidMonthLength,
+  getBidMonthRange,
+} from "@/lib/bidMonth";
 
 // ---------- Types ----------
 
@@ -248,21 +254,6 @@ const PROGRESS_STEPS = [
 const VALID_USERNAME = "test";
 const VALID_PASSWORD = "test";
 
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
 // ---------- Helpers for pairings.json ----------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -408,35 +399,28 @@ function inferYearMonth(result: PbsResult | null): {
     if (d) {
       const year = d.getFullYear();
       const month = d.getMonth();
-      return { year, month, label: `${MONTHS[month]} ${year}` };
+      return { year, month, label: `${BID_MONTHS[month]} ${year}` };
     }
   }
 
   // Fallback to December 2025 (like your screenshots)
   return { year: 2025, month: 11, label: "December 2025" };
 }
-
-function buildCalendar(
-  year: number,
-  month: number,
-  daysInMonthLimit?: number
-): CalendarDay[] {
-  const firstOfMonth = new Date(year, month, 1);
+function buildCalendar(range: { start: Date; end: Date }): CalendarDay[] {
+  const firstOfMonth = range.start;
   const startDay = firstOfMonth.getDay(); // 0=Sun
   const days: CalendarDay[] = [];
 
-  const firstCellDate = new Date(year, month, 1 - startDay);
+  const firstCellDate = new Date(range.start);
+  firstCellDate.setDate(range.start.getDate() - startDay);
+
   for (let i = 0; i < 42; i++) {
     const d = new Date(firstCellDate);
     d.setDate(firstCellDate.getDate() + i);
     days.push({
       date: d,
       day: d.getDate(),
-      inMonth:
-        d.getMonth() === month &&
-        (typeof daysInMonthLimit === "number"
-          ? d.getDate() <= daysInMonthLimit
-          : true),
+      inMonth: d >= range.start && d <= range.end,
     });
   }
 
@@ -448,8 +432,7 @@ function dayKey(date: Date) {
 }
 
 function deriveBidMonthDays(year: number, month: number) {
-  const naturalMonthLength = new Date(year, month + 1, 0).getDate();
-  return Math.min(31, Math.max(30, naturalMonthLength));
+  return getBidMonthLength(year, month);
 }
 
 // ---------- Component ----------
@@ -752,6 +735,7 @@ export default function Home() {
   }
 
   function handleAdminMonthChange(value: number) {
+    setAdminDaysInMonth(deriveBidMonthDays(adminYear, value));
     setAdminMonth(value);
     setAdminTouched(true);
   }
@@ -851,11 +835,24 @@ export default function Home() {
   // Calendar based on admin selection (defaulted from inferred result)
   const displayYear = adminYear;
   const displayMonth = adminMonth;
-  const monthLabel = `${MONTHS[displayMonth]} ${displayYear}`;
-  const calendarDays = buildCalendar(displayYear, displayMonth, adminDaysInMonth);
-  const dayCells = Array.from({ length: adminDaysInMonth }, (_, idx) => idx + 1);
+  const monthLabel = `${BID_MONTHS[displayMonth]} ${displayYear}`;
+  const baseBidMonthRange = getBidMonthRange(displayYear, displayMonth);
+  const bidMonthDates = buildBidMonthDates(
+    displayYear,
+    displayMonth,
+    adminDaysInMonth,
+  );
+  const adjustedRange = {
+    start: baseBidMonthRange.start,
+    end: (() => {
+      const end = new Date(baseBidMonthRange.start);
+      end.setDate(baseBidMonthRange.start.getDate() + adminDaysInMonth - 1);
+      return end;
+    })(),
+  };
+  const calendarDays = buildCalendar(adjustedRange);
   const dayGridStyle = {
-    gridTemplateColumns: `repeat(${adminDaysInMonth}, minmax(0, 1fr))`,
+    gridTemplateColumns: `repeat(${bidMonthDates.length}, minmax(0, 1fr))`,
   };
 
   const layerIsReserve = (layer: number) =>
@@ -1029,7 +1026,7 @@ export default function Home() {
                       value={adminMonth}
                       onChange={(e) => handleAdminMonthChange(Number(e.target.value))}
                     >
-                      {MONTHS.map((m, idx) => (
+                      {BID_MONTHS.map((m, idx) => (
                         <option key={m} value={idx}>
                           {m}
                         </option>
@@ -1377,9 +1374,12 @@ export default function Home() {
                           className="grid gap-[1px] text-[10px] tracking-[0.12em] text-[#777] uppercase"
                           style={dayGridStyle}
                         >
-                          {dayCells.map((day) => (
-                            <div key={day} className="text-center leading-[14px]">
-                              {day}
+                          {bidMonthDates.map((day) => (
+                            <div
+                              key={dayKey(day)}
+                              className="text-center leading-[14px]"
+                            >
+                              {day.getDate()}
                             </div>
                           ))}
                         </div>
@@ -1415,10 +1415,8 @@ export default function Home() {
                               className="flex-1 grid gap-[1px]"
                               style={dayGridStyle}
                             >
-                              {dayCells.map((day) => {
-                                const iso = dayKey(
-                                  new Date(displayYear, displayMonth, day)
-                                );
+                              {bidMonthDates.map((day) => {
+                                const iso = dayKey(day);
                                 const offDay = hasOffRequest(iso, layer);
                                 const pairingDay = hasPairingForLayer(iso, layer);
 
@@ -1433,7 +1431,7 @@ export default function Home() {
 
                                 return (
                                   <div
-                                    key={day}
+                                    key={iso}
                                     className={`${baseCell} ${colorClass}`}
                                     aria-hidden
                                   />
