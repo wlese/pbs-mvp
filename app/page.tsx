@@ -71,6 +71,7 @@ type SequenceDutyDay = {
   rawLines?: string[];
   reportLine?: string;
   reportTime?: string;
+  day?: string;
   legs?: FlightLeg[];
   releaseLine?: string;
   releaseTime?: string;
