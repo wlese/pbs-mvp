@@ -832,7 +832,20 @@ export default function Home() {
 
       const normalized = (Array.isArray(rawSequences) ? rawSequences : [])
         .filter((item): item is PairingSequence => isRecord(item))
-        .map((item) => ({ ...item }));
+        .map((item) => {
+          const withStartDates = item as PairingSequence & {
+            calendar?: { start_dates?: string[] };
+          };
+
+          const startDates = Array.isArray(withStartDates.calendar?.start_dates)
+            ? withStartDates.calendar?.start_dates
+            : withStartDates.startDates;
+
+          return {
+            ...withStartDates,
+            startDates,
+          };
+        });
 
       setPairingSequences(normalized);
     } catch (err: unknown) {
@@ -1394,6 +1407,9 @@ export default function Home() {
                           firstLeg?.departureStation && lastLeg?.arrivalStation
                             ? `${firstLeg.departureStation} → ${lastLeg.arrivalStation}`
                             : null;
+                        const finalRelease = formatDualClock(
+                          dutyDays[dutyDays.length - 1]?.releaseTime,
+                        );
 
                         return (
                           <div
@@ -1456,6 +1472,15 @@ export default function Home() {
                                   </div>
                                 </div>
                               </div>
+
+                              {finalRelease ? (
+                                <div className="flex items-center gap-2 text-right">
+                                  <span className="rounded-full bg-[#e8f0ff] px-3 py-[6px] text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1f4b99] shadow-inner ring-1 ring-[#bed2ff]">
+                                    <span className="text-[10px] font-bold">Sequence Release</span>
+                                    <span className="ml-1 text-[12px] font-black leading-[14px]">{finalRelease}</span>
+                                  </span>
+                                </div>
+                              ) : null}
                             </div>
 
                             {dutyDays.length > 0 ? (
@@ -1469,7 +1494,6 @@ export default function Home() {
                                   );
                                   const calendarLabel = day.calendarDay || day.day;
                                   const formattedReport = formatDualClock(day.reportTime);
-                                  const formattedRelease = formatDualClock(day.releaseTime);
 
                                   return (
                                     <Fragment key={`${sequenceNumber}-day-wrapper-${dayIdx}`}>
@@ -1498,14 +1522,6 @@ export default function Home() {
                                                 <div className="text-[#4a4a4a] whitespace-pre-wrap">{day.reportLine}</div>
                                               ) : null}
                                             </div>
-                                          </div>
-                                          <div className="text-right text-[11px] text-[#4a5a73] leading-4">
-                                            {formattedRelease ? (
-                                              <div className="inline-flex items-center gap-1 rounded-full bg-[#e8f0ff] px-3 py-[4px] text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1f4b99] shadow-inner ring-1 ring-[#bed2ff]">
-                                                <span className="text-[10px] font-bold">Release</span>
-                                                <span className="text-[12px] font-black leading-[14px]">{formattedRelease}</span>
-                                              </div>
-                                            ) : null}
                                           </div>
                                         </div>
 
@@ -1549,35 +1565,36 @@ export default function Home() {
                                                     </div>
                                                   ) : null}
 
-                                                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#dbe4f2] bg-white px-2 py-1 shadow-sm">
-                                                    <div className="flex items-center gap-2">
-                                                      <span className="rounded-full bg-[#e7eef9] px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4a90e2]">
-                                                        Leg {legIdx + 1}
-                                                      </span>
-                                                      {blockLabel ? (
-                                                        <span className="rounded-md bg-[#fff2d6] px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8a5b0a] ring-1 ring-[#f1cf8b]">
-                                                          Block {blockLabel}
+                                                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#dbe4f2] bg-white px-2 py-1 shadow-sm">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="rounded-full bg-[#e7eef9] px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4a90e2]">
+                                                          Leg {legIdx + 1}
                                                         </span>
-                                                      ) : null}
-                                                    </div>
+                                                        {stations ? (
+                                                          <div className="text-[13px] font-semibold text-[#1f355e]">
+                                                            {stations}
+                                                          </div>
+                                                        ) : null}
+                                                      </div>
 
-                                                    <div className="flex flex-col gap-[2px] text-[11px] text-[#2f4058]">
-                                                      {stations ? <div className="font-semibold">{stations}</div> : null}
-                                                      {times ? <div className="text-[#4a5a73]">{times}</div> : null}
-                                                      {meta ? <div className="text-[#6b7a90]">{meta}</div> : null}
+                                                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#2f4058]">
+                                                        {blockLabel ? (
+                                                          <span className="rounded-md bg-[#fff2d6] px-2 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8a5b0a] ring-1 ring-[#f1cf8b]">
+                                                            Block {blockLabel}
+                                                          </span>
+                                                        ) : null}
+                                                        {times ? (
+                                                          <span className="font-semibold text-[#2f4058]">{times}</span>
+                                                        ) : null}
+                                                        {meta ? <span className="text-[#6b7a90]">{meta}</span> : null}
+                                                      </div>
                                                     </div>
-                                                  </div>
                                                 </Fragment>
                                               );
                                             })}
                                           </div>
                                         )}
 
-                                        {day.releaseLine ? (
-                                          <div className="mt-2 rounded-lg bg-white px-2 py-1 text-[11px] text-[#4a4a4a] shadow-sm">
-                                            {day.releaseLine}
-                                          </div>
-                                        ) : null}
                                       </li>
 
                                       {layoverDetails ? (
