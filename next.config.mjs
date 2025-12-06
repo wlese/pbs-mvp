@@ -1,6 +1,5 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   experimental: {
     // pdf-parse dynamically requires a bundled pdf.js build; mark it external so
     // Next doesn't attempt to bundle those assets and instead resolves them at

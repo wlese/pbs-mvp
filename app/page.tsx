@@ -1,7 +1,7 @@
 // app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import pairingsData from "@/data/pairings.json";
@@ -139,6 +139,41 @@ type UploadedLeg = {
   ground_time: string | null;
   meal: string | null;
 };
+
+function decimalHoursToClock(value?: string): string | null {
+  if (!value) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const totalMinutes = Math.round(numeric * 60);
+  const hours = Math.floor(totalMinutes / 60)
+    .toString()
+    .padStart(2, "0");
+  const minutes = (totalMinutes % 60).toString().padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function parseLayoverDetails(raw?: string) {
+  if (!raw) return null;
+
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+
+  const station = tokens.shift();
+  const timeIndex = tokens.findIndex((token) => /\d{1,2}\.\d{2}/.test(token));
+  const timeToken = timeIndex >= 0 ? tokens.splice(timeIndex, 1)[0] : null;
+  const layoverClock = decimalHoursToClock(timeToken ?? undefined);
+
+  const hotelName = tokens
+    .filter((token) => token !== "−−" && token !== "--")
+    .join(" ")
+    .trim();
+
+  return {
+    station,
+    hotelName: hotelName || station,
+    layoverClock,
+  };
+}
 
 type PbsResult = {
   summary?: string;
@@ -1206,48 +1241,74 @@ export default function Home() {
 
                             {dutyDays.length > 0 ? (
                               <ul className="space-y-1 text-xs text-[#2f4058]">
-                                {dutyDays.map((day, dayIdx) => (
-                                  <li
-                                    key={`${sequenceNumber}-day-${dayIdx}`}
-                                    className="rounded-md border border-[#d6e3f5] bg-white px-2 py-1"
-                                  >
-                                    <div className="font-semibold text-[#23426d]">Duty Day {dayIdx + 1}</div>
-                                    {day.reportLine ? (
-                                      <div className="whitespace-pre-wrap">{day.reportLine}</div>
-                                    ) : null}
-                                    {Array.isArray(day.legs) && day.legs.length > 0 && (
-                                      <ul className="mt-1 space-y-[2px] text-[11px] text-[#3d4c66]">
-                                        {day.legs.map((leg, legIdx) => (
-                                          <li key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`} className="flex gap-1">
-                                            <span className="text-[10px] uppercase tracking-[0.1em] text-[#8a9ab5] font-semibold">
-                                              LEG {legIdx + 1}:
-                                            </span>
-                                            <span className="break-words">
-                                              {[leg.day,
-                                              leg.date,
-                                              leg.equipment,
-                                              leg.flightNumber,
-                                              leg.departureStation,
-                                              leg.departureTime,
-                                              leg.meal,
-                                              leg.arrivalStation,
-                                              leg.arrivalTime,
-                                              leg.blockTime]
-                                                .filter(Boolean)
-                                                .join(" ")}
-                                            </span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                    {day.releaseLine ? (
-                                      <div className="whitespace-pre-wrap">{day.releaseLine}</div>
-                                    ) : null}
-                                    {day.hotelLayover ? (
-                                      <div className="whitespace-pre-wrap">{day.hotelLayover}</div>
-                                    ) : null}
-                                  </li>
-                                ))}
+                                {dutyDays.map((day, dayIdx) => {
+                                  const layoverDetails = parseLayoverDetails(day.hotelLayover);
+
+                                  return (
+                                    <Fragment key={`${sequenceNumber}-day-wrapper-${dayIdx}`}>
+                                      <li
+                                        className="rounded-md border border-[#d6e3f5] bg-white px-2 py-1"
+                                      >
+                                        <div className="font-semibold text-[#23426d]">Duty Day {dayIdx + 1}</div>
+                                        {day.reportLine ? (
+                                          <div className="whitespace-pre-wrap">{day.reportLine}</div>
+                                        ) : null}
+                                        {Array.isArray(day.legs) && day.legs.length > 0 && (
+                                          <ul className="mt-1 space-y-[2px] text-[11px] text-[#3d4c66]">
+                                            {day.legs.map((leg, legIdx) => (
+                                              <li
+                                                key={`${sequenceNumber}-day-${dayIdx}-leg-${legIdx}`}
+                                                className="flex gap-1"
+                                              >
+                                                <span className="text-[10px] uppercase tracking-[0.1em] text-[#8a9ab5] font-semibold">
+                                                  LEG {legIdx + 1}:
+                                                </span>
+                                                <span className="break-words">
+                                                  {[leg.day,
+                                                  leg.date,
+                                                  leg.equipment,
+                                                  leg.flightNumber,
+                                                  leg.departureStation,
+                                                  leg.departureTime,
+                                                  leg.meal,
+                                                  leg.arrivalStation,
+                                                  leg.arrivalTime,
+                                                  leg.blockTime]
+                                                    .filter(Boolean)
+                                                    .join(" ")}
+                                                </span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+                                        {day.releaseLine ? (
+                                          <div className="whitespace-pre-wrap">{day.releaseLine}</div>
+                                        ) : null}
+                                      </li>
+
+                                      {layoverDetails ? (
+                                        <li
+                                          className="flex items-start gap-2 rounded-md border border-dashed border-[#d6e3f5] bg-[#f5f8ff] px-2 py-1"
+                                        >
+                                          <span className="text-[10px] uppercase tracking-[0.1em] text-[#8a9ab5] font-semibold">
+                                            Layover
+                                          </span>
+                                          <div className="flex-1 space-y-[2px] text-[11px] text-[#3d4c66]">
+                                            <div className="font-semibold text-[#23426d]">
+                                              {layoverDetails.station}
+                                            </div>
+                                            <div className="whitespace-pre-wrap">{layoverDetails.hotelName}</div>
+                                            {layoverDetails.layoverClock ? (
+                                              <div className="text-[#4a4a4a]">
+                                                Layover time: {layoverDetails.layoverClock}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        </li>
+                                      ) : null}
+                                      </Fragment>
+                                    );
+                                  })}
                               </ul>
                             ) : (
                               <div className="text-xs text-[#6b7280]">No duty day details available.</div>
