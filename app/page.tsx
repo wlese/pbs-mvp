@@ -431,6 +431,10 @@ function dayKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function deriveBidMonthDays(year: number, month: number) {
+  return getBidMonthLength(year, month);
+}
+
 // ---------- Component ----------
 
 export default function Home() {
@@ -727,6 +731,7 @@ export default function Home() {
   }
 
   function handleAdminMonthChange(value: number) {
+    setAdminDaysInMonth(deriveBidMonthDays(adminYear, value));
     setAdminMonth(value);
     setAdminTouched(true);
   }
@@ -827,10 +832,21 @@ export default function Home() {
   const displayYear = adminYear;
   const displayMonth = adminMonth;
   const monthLabel = `${BID_MONTHS[displayMonth]} ${displayYear}`;
-  const bidMonthRange = getBidMonthRange(displayYear, displayMonth);
-  const bidMonthDates = buildBidMonthDates(displayYear, displayMonth);
-  const bidMonthLength = getBidMonthLength(displayYear, displayMonth);
-  const calendarDays = buildCalendar(bidMonthRange);
+  const baseBidMonthRange = getBidMonthRange(displayYear, displayMonth);
+  const bidMonthDates = buildBidMonthDates(
+    displayYear,
+    displayMonth,
+    adminDaysInMonth,
+  );
+  const adjustedRange = {
+    start: baseBidMonthRange.start,
+    end: (() => {
+      const end = new Date(baseBidMonthRange.start);
+      end.setDate(baseBidMonthRange.start.getDate() + adminDaysInMonth - 1);
+      return end;
+    })(),
+  };
+  const calendarDays = buildCalendar(adjustedRange);
   const dayGridStyle = {
     gridTemplateColumns: `repeat(${bidMonthDates.length}, minmax(0, 1fr))`,
   };
